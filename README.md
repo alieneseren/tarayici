@@ -245,7 +245,15 @@ Contributions are welcome! Please:
 
 ## 📝 License
 
-This project is licensed under the MIT License - see the LICENSE file for details.
+This project is licensed under **MIT License with Commons Clause** - see the LICENSE file for details.
+
+**Key Terms:**
+- ✅ Free for personal, educational, and non-commercial use
+- ✅ You can modify, study, and learn from the code
+- ❌ Commercial use, selling, or SaaS deployment requires explicit permission
+- ❌ Cannot be used to build competing commercial products
+
+For commercial licensing inquiries, contact the copyright holder via GitHub.
 
 ## 🙋 Support
 
