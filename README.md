@@ -270,6 +270,5 @@ For commercial licensing inquiries, contact the copyright holder via GitHub.
 
 ---
 
-**Made with ❤️ for privacy-conscious developers**
 
 *Visionary Navigator - Your gateway to intelligent, private browsing.*
