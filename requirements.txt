@@ -1,0 +1,35 @@
+# Visionary Navigator — Bağımlılıklar
+# Tarayıcı çekirdeği
+PyQt6>=6.6.0
+PyQt6-WebEngine>=6.6.0
+
+# Yapay Zeka — Yerel LLM
+llama-cpp-python>=0.2.50
+
+# Yapay Zeka — Gemini API
+google-genai>=1.0.0
+
+# Ses Motoru
+edge-tts>=7.0.0
+SpeechRecognition>=3.10.0
+
+# Görüntü İşleme & AR
+opencv-python>=4.9.0
+mediapipe>=0.10.9
+ultralytics>=8.1.0
+rembg>=2.0.50
+
+# Yardımcı
+psutil>=5.9.0
+Pillow>=10.0.0
+numpy>=1.24.0
+
+# Finansal Zekâ Modülü
+yfinance>=0.2.36
+pandas>=2.0.0
+scikit-learn>=1.3.0
+# Opsiyonel — Python 3.14 için henüz mevcut değil:
+# pandas_ta>=0.3.14b
+# tensorflow>=2.15.0; platform_machine != "arm64"
+# tensorflow-macos>=2.15.0; platform_machine == "arm64"
+# tensorflow-metal>=1.1.0; platform_machine == "arm64"

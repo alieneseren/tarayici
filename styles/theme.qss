@@ -1,0 +1,299 @@
+/*
+  Visionary Navigator — Ultra Minimalist Dark Theme
+  Clean, refined, and luxurious dark mode experience.
+*/
+
+/* ── Global ───────────────────────────────────────── */
+QMainWindow {
+    background-color: #0A0A0C;
+    color: #E8E8F0;
+}
+
+QWidget {
+    background-color: transparent;
+    color: #E8E8F0;
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    font-size: 13px;
+}
+
+/* ── Toolbar — Ultra Minimal ──────────────────────── */
+QToolBar {
+    background: #0D0D10;
+    border: none;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+    padding: 4px 12px;
+    spacing: 6px;
+}
+
+QToolBar QToolButton {
+    background-color: transparent;
+    border: none;
+    border-radius: 6px;
+    padding: 4px 8px;
+    color: #707080;
+    font-size: 13px;
+    font-weight: 500;
+}
+
+QToolBar QToolButton:hover {
+    background-color: rgba(255, 255, 255, 0.05);
+    color: #ECECF1;
+}
+
+QToolBar QToolButton:pressed {
+    background-color: rgba(255, 255, 255, 0.08);
+}
+
+QPushButton#toolbarBtn {
+    background-color: transparent;
+    border: none;
+    border-radius: 5px;
+    padding: 3px;
+    color: #505060;
+}
+
+QPushButton#toolbarBtn:hover {
+    background-color: rgba(255, 255, 255, 0.06);
+    color: #FFFFFF;
+}
+
+/* ── Address Bar — Clean & Minimal ────────────────── */
+QLineEdit#addressBar {
+    background-color: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.04);
+    border-radius: 8px;
+    padding: 6px 14px;
+    color: #DCDCE0;
+    font-size: 13px;
+    min-height: 18px;
+    selection-background-color: rgba(108, 99, 255, 0.3);
+    selection-color: #FFFFFF;
+}
+
+QLineEdit#addressBar:focus {
+    border: 1px solid rgba(108, 99, 255, 0.35);
+    background-color: rgba(255, 255, 255, 0.05);
+}
+
+/* ── Tabs — Sleek Design ──────────────────────────── */
+QTabWidget::pane {
+    border: none;
+    background-color: #0A0A0C;
+}
+
+QTabBar {
+    background-color: #0A0A0C;
+    border: none;
+}
+
+QTabBar::tab {
+    background-color: transparent;
+    color: #505060;
+    border: none;
+    border-bottom: 2px solid transparent;
+    padding: 6px 16px;
+    margin-right: 1px;
+    min-width: 120px;
+    max-width: 220px;
+    font-size: 12px;
+    font-weight: 500;
+}
+
+QTabBar::tab:selected {
+    background: transparent;
+    color: #FFFFFF;
+    border-bottom: 2px solid #6C63FF;
+}
+
+QTabBar::tab:hover:!selected {
+    background-color: rgba(255, 255, 255, 0.03);
+    color: #909098;
+}
+
+QTabBar::close-button {
+    image: url('/Users/alienes/kendi_tarayicim/assets/icons/close.svg');
+    background-color: transparent;
+    border-radius: 3px;
+    margin: 1px;
+}
+
+QTabBar::close-button:hover {
+    background-color: rgba(255, 82, 82, 0.7);
+}
+
+/* ── + Tab Button ─────────────────────────────────── */
+QPushButton#newTabBtn {
+    background: transparent;
+    color: #6C63FF;
+    border: 1px solid rgba(108, 99, 255, 0.15);
+    border-radius: 5px;
+    font-size: 16px;
+    font-weight: bold;
+}
+
+QPushButton#newTabBtn:hover {
+    background: rgba(108, 99, 255, 0.08);
+    border-color: rgba(108, 99, 255, 0.4);
+    color: #FFFFFF;
+}
+
+/* ── Floating Islands (AI Sidebar & AR) ───────────── */
+QWidget#aiSidebar, QWidget#arWidget {
+    background: #101014;
+    border: 1px solid rgba(255, 255, 255, 0.04);
+    border-radius: 14px;
+}
+
+QLabel#sidebarTitle {
+    font-size: 12px;
+    font-weight: 700;
+    color: #FFFFFF;
+    letter-spacing: 0.8px;
+    text-transform: uppercase;
+}
+
+QTextEdit#aiOutput {
+    background-color: rgba(255, 255, 255, 0.02);
+    border: 1px solid rgba(255, 255, 255, 0.03);
+    border-radius: 8px;
+    padding: 14px;
+    color: #E0E0E8;
+    font-size: 13px;
+    line-height: 1.5;
+}
+
+/* ── Buttons (scoped to panels) ─────────────── */
+QWidget#aiSidebar QPushButton,
+QWidget#arWidget QPushButton,
+QWidget#settingsPage QPushButton,
+QWidget#settingsInner QPushButton {
+    background-color: rgba(255, 255, 255, 0.04);
+    color: #E0E0E8;
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    border-radius: 6px;
+    padding: 6px 14px;
+    font-weight: 500;
+    font-size: 12px;
+}
+
+QWidget#aiSidebar QPushButton:hover,
+QWidget#arWidget QPushButton:hover,
+QWidget#settingsPage QPushButton:hover {
+    background-color: rgba(255, 255, 255, 0.07);
+    border-color: rgba(255, 255, 255, 0.1);
+}
+
+QWidget#aiSidebar QPushButton:pressed,
+QWidget#arWidget QPushButton:pressed,
+QWidget#settingsPage QPushButton:pressed {
+    background-color: rgba(255, 255, 255, 0.02);
+}
+
+QPushButton:disabled {
+    background-color: rgba(255, 255, 255, 0.01);
+    color: #303038;
+    border-color: rgba(255, 255, 255, 0.02);
+}
+
+QPushButton#accentButton {
+    background: transparent;
+    color: #D0D0D8;
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    font-weight: 500;
+}
+
+QPushButton#accentButton:hover {
+    background: rgba(255, 255, 255, 0.04);
+    color: #FFFFFF;
+    border-color: rgba(255, 255, 255, 0.12);
+}
+
+/* ── Scrollbars — Subtle ──────────────────────────── */
+QScrollBar:vertical {
+    background-color: transparent;
+    width: 4px;
+    margin: 2px;
+}
+
+QScrollBar::handle:vertical {
+    background-color: rgba(255, 255, 255, 0.06);
+    border-radius: 2px;
+    min-height: 35px;
+}
+
+QScrollBar::handle:vertical:hover {
+    background-color: rgba(255, 255, 255, 0.12);
+}
+
+QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical,
+QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {
+    background: none;
+    height: 0;
+}
+
+/* ── Status Bar — Minimal ─────────────────────────── */
+QStatusBar {
+    background: #0A0A0C;
+    border-top: 1px solid rgba(255, 255, 255, 0.03);
+    color: #404050;
+    font-size: 11px;
+    padding: 2px 8px;
+}
+
+/* ── Progress Bar ─────────────────────────────────── */
+QProgressBar {
+    background-color: rgba(255, 255, 255, 0.02);
+    border: none;
+    border-radius: 1px;
+    height: 2px;
+    color: transparent;
+}
+
+QProgressBar::chunk {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+        stop:0 #6C63FF, stop:1 #00D9FF);
+    border-radius: 1px;
+}
+
+/* ── Separator ────────────────────────────────────── */
+QToolBar::separator {
+    background: rgba(255, 255, 255, 0.03);
+    width: 1px;
+    margin: 4px 3px;
+}
+
+/* ── Popup / Tooltip Kontrast Artışı ───────────────── */
+QMessageBox {
+    background-color: #FEFDF5;
+}
+
+QMessageBox QLabel {
+    color: #1F1F1F;
+    font-size: 13px;
+    font-weight: 600;
+    background: transparent;
+}
+
+QMessageBox QPushButton {
+    background: #F5E8E0;
+    color: #1A1A1A;
+    border: 1px solid #D4C4B5;
+    border-radius: 8px;
+    padding: 6px 14px;
+    min-width: 96px;
+    font-weight: 600;
+}
+
+QMessageBox QPushButton:hover {
+    background: #EEDFD6;
+}
+
+QToolTip {
+    background-color: #FEFDF5;
+    color: #1A1A1A;
+    border: 1px solid #D4C4B5;
+    border-radius: 6px;
+    padding: 6px 8px;
+    font-size: 12px;
+    font-weight: 600;
+}
