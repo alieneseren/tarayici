@@ -780,7 +780,6 @@ class MusicFullPage(QWidget):
             QPushButton:hover {{
                 background: rgba(0,255,65,0.08);
                 border: 1px solid {_ACCENT};
-                box-shadow: 0 0 12px rgba(0,255,65,0.3);
             }}
         """)
         layout.addWidget(new_pl_btn)
@@ -1005,7 +1004,6 @@ class MusicFullPage(QWidget):
             }}
             QPushButton:hover {{
                 background: {_ACCENT_LIGHT};
-                box-shadow: 0 0 14px rgba(0,255,65,0.4);
             }}
         """)
         self._search_btn.clicked.connect(self._do_search)
@@ -1041,7 +1039,7 @@ class MusicFullPage(QWidget):
         """
         
         self._watch_url_btn = QPushButton("▶ İzle")
-        self._watch_url_btn.setStyleSheet(f"QPushButton {{ background: {_ACCENT_ROSE}; color: white; {_pill_btn_base} }} QPushButton:hover {{ opacity: 0.85; }}")
+        self._watch_url_btn.setStyleSheet(f"QPushButton {{ background: {_ACCENT_ROSE}; color: white; {_pill_btn_base} }} QPushButton:hover {{ background: #c41222; }}")
         self._watch_url_btn.clicked.connect(self._watch_url)
         url_row.addWidget(self._watch_url_btn)
 
@@ -1095,7 +1093,6 @@ class MusicFullPage(QWidget):
                 height: 12px;
                 border-radius: 6px;
                 margin: -4px 0;
-                box-shadow: 0 0 6px rgba(0,255,65,0.6);
             }}
             QSlider::sub-page:horizontal {{
                 background: {_ACCENT};
@@ -1215,7 +1212,6 @@ class MusicFullPage(QWidget):
             }}
             QPushButton:hover {{
                 background: {_ACCENT_LIGHT};
-                box-shadow: 0 0 16px rgba(0,255,65,0.5);
             }}
             QPushButton:pressed {{
                 background: {_ACCENT_DIM};
@@ -1799,7 +1795,6 @@ class MusicFullPage(QWidget):
             }}
             QPushButton:hover {{
                 background: {_ACCENT_LIGHT};
-                box-shadow: 0 0 10px rgba(0,255,65,0.5);
             }}
         """)
         play_btn.setToolTip("Oynat")
@@ -1936,7 +1931,6 @@ class MusicFullPage(QWidget):
             }}
             QPushButton:hover {{
                 background: {_ACCENT_LIGHT};
-                box-shadow: 0 0 8px rgba(0,255,65,0.5);
             }}
         """)
         play_btn.clicked.connect(lambda: self._play_lib_track(filename))
