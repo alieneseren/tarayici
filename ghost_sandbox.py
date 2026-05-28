@@ -27,7 +27,8 @@ from PyQt6.QtWidgets import (
     QFrame, QGraphicsDropShadowEffect, QGraphicsOpacityEffect
 )
 from PyQt6.QtWebEngineCore import (
-    QWebEngineProfile, QWebEngineSettings, QWebEngineDownloadRequest
+    QWebEngineProfile, QWebEngineSettings, QWebEngineDownloadRequest,
+    QWebEnginePage, QWebEngineScript
 )
 from PyQt6.QtWebEngineWidgets import QWebEngineView
 
@@ -194,11 +195,10 @@ class GhostProfile(QWebEngineProfile):
 
         # Standart Chrome UA — video siteleri QtWebEngine UA'sına kısıtlı
         # codec/format sunabilir; Chromium-tabanlı UA ile H.264/DASH tam destek alır
-        self.setHttpUserAgent(
-            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-            "AppleWebKit/537.36 (KHTML, like Gecko) "
-            "Chrome/124.0.0.0 Safari/537.36"
-        )
+        # NOT: Widevine DRM tetiklememek için Platform bilgisi gerçekçi tutulur
+        # UA'yı kaldırdık — default QtWebEngine UA kullanılır;
+        # bazı DRM siteleri Chrome UA görünce Widevine şifreli içerik sunuyor
+        # ve ghost profilde CDM kurulu olmadığından video 102630 hatasıyla kırılıyordu
         
         logger.debug(f"[Ghost] Gizlilik ayarları yapılandırıldı: {self._profile_id}")
         
@@ -376,6 +376,110 @@ class GhostNotification(QFrame):
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#  HAYALET SAYFA — medya uyumluluk yamaları
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+_GHOST_MEDIA_FIX_JS = """
+(function () {
+  'use strict';
+
+  // 1. play() reddedilirse (autoplay policy) sesi kapatarak yeniden dene
+  var _origPlay = HTMLMediaElement.prototype.play;
+  HTMLMediaElement.prototype.play = function () {
+    var self = this;
+    var p = _origPlay.call(this);
+    if (p && typeof p.catch === 'function') {
+      return p.catch(function (err) {
+        if (err && err.name === 'NotAllowedError') {
+          self.muted = true;
+          return _origPlay.call(self);
+        }
+        return Promise.reject(err);
+      });
+    }
+    return p;
+  };
+
+  // 2. Video element'te hata oluşursa kaynağı yeniden yüklemeyi dene
+  document.addEventListener('error', function (e) {
+    var el = e.target;
+    if ((el.tagName === 'VIDEO' || el.tagName === 'AUDIO') && el.error) {
+      var code = el.error.code;
+      // MEDIA_ERR_NETWORK (2) veya MEDIA_ERR_SRC_NOT_SUPPORTED (4)
+      if (code === 2 || code === 4) {
+        var src = el.src || (el.currentSrc || '');
+        if (src) {
+          // Kısa gecikme sonra yeniden yükle
+          setTimeout(function () {
+            el.load();
+            el.play().catch(function () {});
+          }, 800);
+        }
+      }
+    }
+  }, true);
+
+  // 3. MediaSource.isTypeSupported eksik yanıtı düzelt (macOS AVFoundation destekler)
+  if (typeof window.MediaSource !== 'undefined' && MediaSource.isTypeSupported) {
+    var _origMST = MediaSource.isTypeSupported.bind(MediaSource);
+    var _knownSupported = [
+      'video/mp4; codecs="avc1',
+      'video/mp4; codecs="mp4a',
+      'video/webm; codecs="vp9',
+      'video/webm; codecs="vp8',
+      'audio/mp4; codecs="mp4a',
+      'audio/webm; codecs="opus',
+    ];
+    MediaSource.isTypeSupported = function (type) {
+      var r = _origMST(type);
+      if (!r && type) {
+        return _knownSupported.some(function (k) {
+          return type.toLowerCase().indexOf(k.toLowerCase()) !== -1;
+        });
+      }
+      return r;
+    };
+  }
+})();
+"""
+
+
+class GhostPage(QWebEnginePage):
+    """
+    Hayalet sekme için özelleştirilmiş sayfa.
+    Medya uyumluluk yamasnı ve pencere açma desteğini içerir.
+    """
+
+    def __init__(self, profile: QWebEngineProfile, parent_view=None, parent=None):
+        super().__init__(profile, parent)
+        self._parent_view = parent_view
+        self._inject_media_fix()
+
+    def _inject_media_fix(self) -> None:
+        """Video oynatma uyumluluk scriptini enjekte et."""
+        script = QWebEngineScript()
+        script.setName("GhostMediaFix")
+        script.setSourceCode(_GHOST_MEDIA_FIX_JS)
+        script.setInjectionPoint(QWebEngineScript.InjectionPoint.DocumentCreation)
+        script.setWorldId(QWebEngineScript.ScriptWorldId.MainWorld)
+        script.setRunsOnSubFrames(True)
+        self.scripts().insert(script)
+
+    def createWindow(self, window_type):
+        """Video pop-up pencerelerini ana pencerede yeni ghost sekme olarak aç."""
+        if self._parent_view:
+            main_window = self._parent_view.window()
+            if hasattr(main_window, '_ghost_manager'):
+                new_tab = main_window._ghost_manager.create_ghost_tab()
+                if new_tab:
+                    idx = main_window._tab_widget.addTab(new_tab, "👻 Hayalet")
+                    main_window._tab_widget.setCurrentIndex(idx)
+                    if hasattr(new_tab, 'page'):
+                        return new_tab.page()
+        return super().createWindow(window_type)
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 #  HAYALET SEKME (GHOST TAB)
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
@@ -408,9 +512,8 @@ class GhostTab(QWebEngineView):
             proxy_port=ghost_manager.get_proxy_port()
         )
         
-        # Sayfa oluştur
-        from PyQt6.QtWebEngineCore import QWebEnginePage
-        self._page = QWebEnginePage(self._ghost_profile, self)
+        # Sayfa oluştur — GhostPage medya uyumluluk yaması içeriyor
+        self._page = GhostPage(self._ghost_profile, parent_view=self, parent=self)
         self.setPage(self._page)
         
         # İndirme engelleme bildirimi

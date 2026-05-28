@@ -102,7 +102,12 @@ def main():
     ensure_directories()
 
     # QtWebEngine ayarları — process başlamadan ÖNCE yapılmalı
-    base_flags = "--disable-gpu-compositing --use-gl=angle --disable-features=SkiaGraphite"
+    base_flags = (
+        "--disable-gpu-compositing "
+        "--use-gl=angle "
+        "--disable-features=SkiaGraphite "
+        "--autoplay-policy=no-user-gesture-required"
+    )
     
     # Tor modu aktifse proxy flag'i ekle
     try:
