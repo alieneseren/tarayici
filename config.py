@@ -24,7 +24,7 @@ LLM_MODEL_PATH = os.path.join(MODELS_DIR, "model.gguf")  # Kullanıcı kendi mod
 LLM_CONTEXT_LENGTH = 4096  # Hibrit AI: ağır işler Gemini'ye yönlendirilir
 LLM_MAX_TOKENS = 1024
 LLM_TEMPERATURE = 0.7
-LLM_GPU_LAYERS = -1  # -1 = Apple Silicon Metal GPU auto-offload
+LLM_GPU_LAYERS = 0  # 0 = CPU only (Metal GPU auto-offload can cause segfaults in threads)
 LLM_THREADS = 4
 LLM_IDLE_TIMEOUT_SEC = 600  # 10 dakika — gereksiz yeniden yüklemeyi önler
 

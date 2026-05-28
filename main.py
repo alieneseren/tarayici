@@ -115,7 +115,9 @@ def main():
     except Exception as e:
         logger.warning(f"Tor durumu kontrol edilemedi: {e}")
     
-    os.environ.setdefault("QTWEBENGINE_CHROMIUM_FLAGS", base_flags)
+    # setdefault yerine doğrudan atama: Tor modu aktifken flag'in mevcut değerle
+    # sessizce geçersizleşmesini önler.
+    os.environ["QTWEBENGINE_CHROMIUM_FLAGS"] = base_flags
 
     # KRİTİK: QtWebEngineWidgets, QApplication oluşturulmadan ÖNCE import edilmeli
     from PyQt6.QtWebEngineWidgets import QWebEngineView  # noqa: F401

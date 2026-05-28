@@ -158,11 +158,14 @@ class GhostProfile(QWebEngineProfile):
         
     def _configure_privacy(self):
         """Gizlilik ayarlarını yapılandır — izleme engelli."""
-        # HTTP önbelleği kapalı
-        self.setHttpCacheType(QWebEngineProfile.HttpCacheType.NoCache)
-        self.setHttpCacheMaximumSize(0)
+        # Bellek içi HTTP önbelleği — diske YAZILMAZ, ama video buffer'ı
+        # için gerekli RAM alanını sağlar (Error 102630 = buffer eksikliği).
+        # NoCache kullanıldığında video oynatıcı veri parçalarını tekrar
+        # isteyemez ve MEDIA_ERR_DECODE hatası verir.
+        self.setHttpCacheType(QWebEngineProfile.HttpCacheType.MemoryHttpCache)
+        self.setHttpCacheMaximumSize(96 * 1024 * 1024)  # 96 MB RAM cache
         
-        # Persistent storage kapalı
+        # Persistent storage kapalı (disk'e cookie/session yok)
         self.setPersistentCookiesPolicy(
             QWebEngineProfile.PersistentCookiesPolicy.NoPersistentCookies
         )

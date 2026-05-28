@@ -1010,7 +1010,13 @@ class _InstagramWorker(QThread):
                     save_metadata=False,
                     compress_json=False,
                     quiet=True,
+                    max_connection_attempts=1,
+                    request_timeout=8,
                 )
+                # instaloader, bazi HTTP durumlarinda stderr'e gürültülü log basabilir.
+                # Baslangic akisini temiz tutmak icin durum loglarini susturuyoruz.
+                L.context.log = lambda *args, **kwargs: None
+                L.context.error = lambda *args, **kwargs: None
                 L.context._session.headers["User-Agent"] = (
                     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
                     "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"

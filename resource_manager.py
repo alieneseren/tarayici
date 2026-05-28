@@ -226,6 +226,15 @@ class SmartResourceManager:
         if self._mediapipe_face_mesh is not None:
             loaded_models.append("MediaPipe FaceMesh")
 
+        # FaceSwap motor durumunu kontrol et
+        try:
+            from face_swap_engine import FaceSwapEngine
+            fs = FaceSwapEngine()
+            if fs.is_loaded:
+                loaded_models.append(f"FaceSwap ({fs.get_memory_mb():.0f}MB)")
+        except Exception:
+            pass
+
         return {
             "process_ram_mb": round(mem_info.rss / (1024 * 1024), 1),
             "system_ram_used_mb": round(system_mem.used / (1024 * 1024), 1),
@@ -269,4 +278,14 @@ class SmartResourceManager:
             self._cleanup_timer.cancel()
         self.unload_llm()
         self.unload_vision()
+
+        # FaceSwap motorunu da kapat
+        try:
+            from face_swap_engine import FaceSwapEngine
+            fs = FaceSwapEngine()
+            if fs.is_loaded:
+                fs.unload()
+        except Exception:
+            pass
+
         logger.info("Tüm kaynaklar serbest bırakıldı.")

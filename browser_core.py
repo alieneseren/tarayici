@@ -8,6 +8,7 @@ import json
 import logging
 import os
 import sys
+import numpy as np
 from typing import Optional
 from urllib.parse import urlparse
 import urllib.request
@@ -439,8 +440,11 @@ class BrowserPage(QWebEnginePage):
         if self._parent_view:
             main_window = self._parent_view.window()
             if hasattr(main_window, 'add_new_tab'):
-                new_tab = main_window.add_new_tab()
-                return new_tab.page()
+                # createWindow, QWebEnginePage bekler; command-center sayfasi degil,
+                # her zaman gercek bir browser tab olusturmak gerekir.
+                new_tab = main_window.add_new_tab(QUrl("about:blank"), "Yeni Sekme")
+                if hasattr(new_tab, 'page'):
+                    return new_tab.page()
         return super().createWindow(window_type)
 
     def _inject_scripts(self) -> None:
@@ -517,6 +521,62 @@ class BrowserTab(QWebEngineView):
         self.setUrl(QUrl(url))
 
 
+# ─── Akıllı Adres Çubuğu — Safari Davranışı ──────────────────────
+class SmartAddressBar(QLineEdit):
+    """
+    Safari benzeri akıllı adres çubuğu.
+
+    Özellikler:
+    - Return/Enter → navigate sinyali (keyPressEvent ile güvenli yakalama)
+    - Odaklanınca tüm metni seçer (Ctrl+L / tıklama)
+    - Escape → odaktan çık
+    - URL encoding: boşluklu aramalar doğru encode edilir
+    - Arama terimi mi URL mi: otomatik algılama
+    """
+    navigate = pyqtSignal(str)  # işlenmiş URL veya arama URL'si
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setObjectName("addressBar")
+        self.setPlaceholderText("Arama veya adres girin")
+
+    def focusInEvent(self, event):
+        super().focusInEvent(event)
+        # Odaklanınca tüm metni seç — Safari / Chrome davranışı
+        QTimer.singleShot(0, self.selectAll)
+
+    def keyPressEvent(self, event):
+        key = event.key()
+        if key in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
+            self._emit_navigate()
+            event.accept()
+            return
+        if key == Qt.Key.Key_Escape:
+            self.clearFocus()
+            event.accept()
+            return
+        super().keyPressEvent(event)
+
+    def _emit_navigate(self):
+        """Adres çubuğundaki metni URL'ye dönüştür ve navigate sinyali yay."""
+        from urllib.parse import quote_plus
+        url_text = self.text().strip()
+        if not url_text:
+            return
+
+        # Arama terimi tespiti: boşluk VAR ya da nokta YOK → Google arama
+        if " " in url_text or "." not in url_text:
+            url = f"https://www.google.com/search?q={quote_plus(url_text)}"
+        else:
+            # URL: protokol ekle gerekiyorsa
+            if not url_text.startswith(("http://", "https://", "about:", "file://")):
+                url = "https://" + url_text
+            else:
+                url = url_text
+
+        self.navigate.emit(url)
+
+
 # ─── Ana Tarayıcı Penceresi ───────────────────────────────────────
 class VisionaryBrowser(QMainWindow):
     """
@@ -563,6 +623,9 @@ class VisionaryBrowser(QMainWindow):
         self._apply_theme()
         self._setup_shortcuts()
         self._setup_status_bar()
+
+        # Kaydedilmiş Tor durumunu UI'ye yansıt
+        self._sync_tor_ui_state()
 
         # İlk sekmeyi aç
         self.add_new_tab(QUrl(config.DEFAULT_HOME_URL), "Ana Sayfa")
@@ -993,7 +1056,7 @@ class VisionaryBrowser(QMainWindow):
                 background: {_TEXT}; border: none; border-radius: 28px;
                 font-size: 18px; color: #000000;
             }}
-            QPushButton:hover {{ background: #E0E0E0; transform: scale(1.05); }}
+            QPushButton:hover {{ background: #E0E0E0; }}
             QPushButton:pressed {{ background: #C0C0C0; }}
         """)
         self._play_btn.clicked.connect(self._toggle_music_playback)
@@ -2264,85 +2327,92 @@ class VisionaryBrowser(QMainWindow):
             pass
 
     def _create_toolbar(self) -> QToolBar:
-        """Navigasyon araç çubuğunu oluşturur."""
+        """Safari macOS dark mode tarzı navigasyon araç çubuğu."""
+        from PyQt6.QtWidgets import QMenu
+
         toolbar = QToolBar("Navigasyon")
         toolbar.setMovable(False)
+        toolbar.setFloatable(False)
         toolbar.setIconSize(QSize(18, 18))
-        toolbar.setFixedHeight(config.TOOLBAR_HEIGHT)
+        toolbar.setFixedHeight(52)
 
-        # Navigasyon butonları — Minimalist İkonlar
-        icon_size = QSize(20, 20)
+        # ── Sol: Navigasyon Butonları (Safari chevron tarzı) ─────
+        icon_size = QSize(18, 18)
 
-        back_btn = QPushButton()
-        back_btn.setObjectName("toolbarBtn")
-        back_btn.setIcon(QIcon(os.path.join(config.ICONS_DIR, "back.svg")))
-        back_btn.setIconSize(icon_size)
-        back_btn.setToolTip("Geri (Alt+Sol)")
-        back_btn.setFixedSize(36, 32)
-        back_btn.clicked.connect(self._go_back)
-        toolbar.addWidget(back_btn)
+        self._back_btn = QPushButton()
+        self._back_btn.setObjectName("sfNavBtn")
+        self._back_btn.setIcon(QIcon(os.path.join(config.ICONS_DIR, "back.svg")))
+        self._back_btn.setIconSize(icon_size)
+        self._back_btn.setFixedSize(34, 34)
+        self._back_btn.setToolTip("Geri (⌘[)")
+        self._back_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._back_btn.clicked.connect(self._go_back)
+        toolbar.addWidget(self._back_btn)
 
-        forward_btn = QPushButton()
-        forward_btn.setObjectName("toolbarBtn")
-        forward_btn.setIcon(QIcon(os.path.join(config.ICONS_DIR, "forward.svg")))
-        forward_btn.setIconSize(icon_size)
-        forward_btn.setToolTip("İleri (Alt+Sağ)")
-        forward_btn.setFixedSize(36, 32)
-        forward_btn.clicked.connect(self._go_forward)
-        toolbar.addWidget(forward_btn)
+        self._fwd_btn = QPushButton()
+        self._fwd_btn.setObjectName("sfNavBtn")
+        self._fwd_btn.setIcon(QIcon(os.path.join(config.ICONS_DIR, "forward.svg")))
+        self._fwd_btn.setIconSize(icon_size)
+        self._fwd_btn.setFixedSize(34, 34)
+        self._fwd_btn.setToolTip("İleri (⌘])")
+        self._fwd_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._fwd_btn.clicked.connect(self._go_forward)
+        toolbar.addWidget(self._fwd_btn)
 
-        reload_btn = QPushButton()
-        reload_btn.setObjectName("toolbarBtn")
-        reload_btn.setIcon(QIcon(os.path.join(config.ICONS_DIR, "refresh.svg")))
-        reload_btn.setIconSize(icon_size)
-        reload_btn.setToolTip("Yenile (F5)")
-        reload_btn.setFixedSize(36, 32)
-        reload_btn.clicked.connect(self._reload_page)
-        toolbar.addWidget(reload_btn)
+        # ── Orta: Adres Hapı (Safari-style pill) ─────────────────
+        pill = QWidget()
+        pill.setObjectName("addressPill")
+        pill.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        pill.setFixedHeight(36)
+        pill_layout = QHBoxLayout(pill)
+        pill_layout.setContentsMargins(10, 0, 8, 0)
+        pill_layout.setSpacing(6)
 
-        home_btn = QPushButton()
-        home_btn.setObjectName("toolbarBtn")
-        home_btn.setIcon(QIcon(os.path.join(config.ICONS_DIR, "home.svg")))
-        home_btn.setIconSize(icon_size)
-        home_btn.setToolTip("Ana Sayfa")
-        home_btn.setFixedSize(36, 32)
-        home_btn.clicked.connect(self._go_home)
-        toolbar.addWidget(home_btn)
+        # Kilit / bağlantı durumu ikonu
+        self._lock_lbl = QLabel("🔍")
+        self._lock_lbl.setObjectName("lockIcon")
+        self._lock_lbl.setFixedWidth(20)
+        self._lock_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._lock_lbl.setToolTip("Bağlantı durumu")
+        pill_layout.addWidget(self._lock_lbl)
 
-        # Ayraç
+        # SmartAddressBar — returnPressed yerine navigate sinyali kullanır
+        self._address_bar = SmartAddressBar()
+        self._address_bar.navigate.connect(self._navigate_to_url_str)
+        pill_layout.addWidget(self._address_bar, 1)
+
+        # Pill içi Yenile/Durdur butonu
+        self._reload_inline_btn = QPushButton()
+        self._reload_inline_btn.setObjectName("reloadInlineBtn")
+        self._reload_inline_btn.setIcon(QIcon(os.path.join(config.ICONS_DIR, "refresh.svg")))
+        self._reload_inline_btn.setIconSize(QSize(14, 14))
+        self._reload_inline_btn.setFixedSize(24, 24)
+        self._reload_inline_btn.setToolTip("Yenile (⌘R)")
+        self._reload_inline_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._reload_inline_btn.clicked.connect(self._reload_page)
+        pill_layout.addWidget(self._reload_inline_btn)
+
+        toolbar.addWidget(pill)
+
+        # ── Sağ: Özellikler Menüsü ───────────────────────────────
         toolbar.addSeparator()
 
-        # Adres çubuğu
-        self._address_bar = QLineEdit()
-        self._address_bar.setObjectName("addressBar")
-        self._address_bar.setPlaceholderText("🔍 URL veya arama terimi girin...")
-        self._address_bar.returnPressed.connect(self._navigate_to_url)
-        self._address_bar.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
-        toolbar.addWidget(self._address_bar)
-
-        # Ayraç
-        toolbar.addSeparator()
-
-        # ── "Özellikler" Açılır Menü ────────────────────────────
-        from PyQt6.QtWidgets import QMenu
         features_btn = QPushButton("◆ Özellikler ▾")
-        features_btn.setFixedSize(130, 32)
+        features_btn.setFixedSize(122, 30)
         features_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         features_btn.setStyleSheet("""
             QPushButton {
-                background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
-                    stop:0 rgba(108,99,255,0.18), stop:1 rgba(75,75,255,0.12));
+                background: rgba(108, 99, 255, 0.15);
                 color: #A79BFF;
-                border: 1px solid rgba(108, 99, 255, 0.3);
+                border: 1px solid rgba(108, 99, 255, 0.25);
                 border-radius: 8px;
-                font-weight: 700; font-size: 12px;
-                letter-spacing: 0.5px; padding: 0 12px;
+                font-weight: 700; font-size: 11px;
+                letter-spacing: 0.4px; padding: 0 10px;
             }
             QPushButton:hover {
-                background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
-                    stop:0 rgba(108,99,255,0.3), stop:1 rgba(75,75,255,0.25));
+                background: rgba(108, 99, 255, 0.28);
                 color: #FFFFFF;
-                border-color: rgba(108, 99, 255, 0.6);
+                border-color: rgba(108, 99, 255, 0.55);
             }
             QPushButton::menu-indicator { image: none; width: 0; }
         """)
@@ -2350,78 +2420,63 @@ class VisionaryBrowser(QMainWindow):
         features_menu = QMenu(features_btn)
         features_menu.setStyleSheet("""
             QMenu {
-                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                    stop:0 #14142A, stop:1 #0E0E1A);
-                border: 1px solid rgba(108,99,255,0.2);
-                border-radius: 10px; padding: 6px 4px;
-                color: #ECECF1; font-size: 13px;
+                background: #2C2C2E;
+                border: 1px solid rgba(255,255,255,0.10);
+                border-radius: 12px; padding: 6px 4px;
+                color: #EBEBF5; font-size: 13px;
             }
             QMenu::item {
-                padding: 10px 20px 10px 16px;
-                border-radius: 6px; margin: 2px 4px;
+                padding: 9px 18px 9px 14px;
+                border-radius: 7px; margin: 1px 4px;
             }
             QMenu::item:selected {
-                background: rgba(108,99,255,0.15);
+                background: rgba(108,99,255,0.18);
                 color: #FFFFFF;
             }
             QMenu::separator {
-                height: 1px; margin: 4px 12px;
-                background: rgba(255,255,255,0.06);
+                height: 1px; margin: 4px 10px;
+                background: rgba(255,255,255,0.07);
             }
         """)
-
-        # AI
         features_menu.addAction("🧠  AI Sohbet", self._open_ai_fullscreen)
         features_menu.addAction("✨  Ürün Analizi", self._toggle_ai_sidebar)
         features_menu.addSeparator()
-
-        # Finans
         features_menu.addAction("📈  Finans Paneli", self._toggle_finance_sidebar)
         features_menu.addAction("📊  Finans Terminali", self._open_finance_fullscreen)
         features_menu.addSeparator()
-
-        # AR & Gesture
         features_menu.addAction("🥽  AR Sanal Deneme", self._toggle_ar_module)
         self._gesture_action = features_menu.addAction("✋  Jest Kontrolü", self._toggle_gesture)
         features_menu.addSeparator()
-
-        # Müzik
         features_menu.addAction("🎵  Müzik Sayfası", self._open_music_fullscreen)
-        features_menu.addSeparator()
-        
-        # Güvenlik & Gizlilik (kısayol ikonları toolbar'a taşındı)
-
         features_btn.setMenu(features_menu)
         toolbar.addWidget(features_btn)
-        
-        # Özellikler yanında hızlı erişim ikonları (sadece ikon + tooltip)
+
+        # ── Sağ: Hızlı Erişim İkonları ───────────────────────────
         toolbar.addSeparator()
+
         quick_btn_style = """
             QPushButton {
                 background: transparent;
-                color: #EDEDF2;
-                border: 1px solid rgba(255, 255, 255, 0.10);
-                border-radius: 8px;
+                color: #8E8EA0;
+                border: none;
+                border-radius: 7px;
                 font-size: 15px;
-                font-weight: 600;
             }
             QPushButton:hover {
-                background: rgba(255, 255, 255, 0.10);
-                border-color: rgba(255, 255, 255, 0.28);
-                color: #FFFFFF;
+                background: rgba(255, 255, 255, 0.08);
+                color: #EBEBF5;
             }
             QPushButton:pressed {
-                background: rgba(255, 255, 255, 0.16);
+                background: rgba(255, 255, 255, 0.13);
             }
             QPushButton:checked {
-                background: rgba(108, 99, 255, 0.34);
-                border-color: rgba(142, 132, 255, 0.78);
-                color: #FFFFFF;
+                background: rgba(10, 132, 255, 0.20);
+                color: #0A84FF;
             }
         """
-        
+
         self._guardian_btn = QPushButton("🛡️")
-        self._guardian_btn.setFixedSize(34, 32)
+        self._guardian_btn.setFixedSize(32, 30)
         self._guardian_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self._guardian_btn.setToolTip("Guardian: Aktif")
         self._guardian_btn.setCheckable(True)
@@ -2429,33 +2484,35 @@ class VisionaryBrowser(QMainWindow):
         self._guardian_btn.setStyleSheet(quick_btn_style)
         self._guardian_btn.clicked.connect(self._toggle_guardian)
         toolbar.addWidget(self._guardian_btn)
-        
+
         guardian_stats_btn = QPushButton("📊")
-        guardian_stats_btn.setFixedSize(34, 32)
+        guardian_stats_btn.setFixedSize(32, 30)
         guardian_stats_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         guardian_stats_btn.setToolTip("Guardian İstatistikleri")
         guardian_stats_btn.setStyleSheet(quick_btn_style)
         guardian_stats_btn.clicked.connect(self._show_guardian_stats)
         toolbar.addWidget(guardian_stats_btn)
-        
-        privacy_btn = QPushButton("🔒")
-        privacy_btn.setFixedSize(34, 32)
+
+        privacy_btn = QPushButton("🔏")
+        privacy_btn.setFixedSize(32, 30)
         privacy_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         privacy_btn.setToolTip("Gizlilik Kalkanı")
         privacy_btn.setStyleSheet(quick_btn_style)
         privacy_btn.clicked.connect(self._open_privacy_panel)
         toolbar.addWidget(privacy_btn)
-        
+
         search_btn = QPushButton("🔍")
-        search_btn.setFixedSize(34, 32)
+        search_btn.setFixedSize(32, 30)
         search_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         search_btn.setToolTip("Visionary Arama")
         search_btn.setStyleSheet(quick_btn_style)
         search_btn.clicked.connect(self._open_visionary_search)
         toolbar.addWidget(search_btn)
-        
+
+        toolbar.addSeparator()
+
         self._tor_btn = QPushButton("🧅")
-        self._tor_btn.setFixedSize(34, 32)
+        self._tor_btn.setFixedSize(32, 30)
         self._tor_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self._tor_btn.setToolTip("Tor Ağı: Kapalı")
         self._tor_btn.setCheckable(True)
@@ -2463,10 +2520,28 @@ class VisionaryBrowser(QMainWindow):
         self._tor_btn.setStyleSheet(quick_btn_style)
         self._tor_btn.clicked.connect(self._toggle_tor)
         toolbar.addWidget(self._tor_btn)
-        
+
+        # Tor Video Bypass butonu — sadece Tor aktifken görünür
+        self._tor_video_bypass_btn = QPushButton("📺")
+        self._tor_video_bypass_btn.setFixedSize(32, 30)
+        self._tor_video_bypass_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._tor_video_bypass_btn.setToolTip(
+            "Bu videoyu/sayfayı Tor olmadan aç\n"
+            "(Yalnızca bu platform Tor'u atlar, diğer trafik Tor'dan geçer)"
+        )
+        self._tor_video_bypass_btn.setStyleSheet(
+            quick_btn_style + """
+            QPushButton { color: #FF9F0A; }
+            QPushButton:hover { background: rgba(255, 159, 10, 0.15); color: #FFD60A; }
+            """
+        )
+        self._tor_video_bypass_btn.clicked.connect(self._bypass_tor_for_current_page)
+        self._tor_video_bypass_btn.hide()
+        toolbar.addWidget(self._tor_video_bypass_btn)
+
         # Ghost Mode butonu
         self._ghost_btn = QPushButton("👻")
-        self._ghost_btn.setFixedSize(34, 32)
+        self._ghost_btn.setFixedSize(32, 30)
         self._ghost_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self._ghost_btn.setToolTip("Hayalet Mod: Pasif (yeni izole sekme aç)")
         self._ghost_btn.setCheckable(True)
@@ -2474,18 +2549,17 @@ class VisionaryBrowser(QMainWindow):
         self._ghost_btn.setStyleSheet(
             quick_btn_style + """
             QPushButton:checked {
-                background: rgba(230, 199, 194, 0.36);
-                border-color: rgba(230, 199, 194, 0.90);
-                color: #FFFFFF;
+                background: rgba(230, 199, 194, 0.22);
+                color: #E6C7C2;
             }
             """
         )
         self._ghost_btn.clicked.connect(self._open_ghost_tab)
         toolbar.addWidget(self._ghost_btn)
-        
-        # Smart Proxy butonu (🌍 ülke seçimi)
+
+        # Smart Proxy butonu
         self._proxy_btn = QPushButton("🌍")
-        self._proxy_btn.setFixedSize(34, 32)
+        self._proxy_btn.setFixedSize(32, 30)
         self._proxy_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self._proxy_btn.setToolTip("Akıllı Proxy: Kapalı (ülke seç)")
         self._proxy_btn.setCheckable(True)
@@ -2493,17 +2567,18 @@ class VisionaryBrowser(QMainWindow):
         self._proxy_btn.setStyleSheet(
             quick_btn_style + """
             QPushButton:checked {
-                background: rgba(34, 197, 94, 0.36);
-                border-color: rgba(34, 197, 94, 0.90);
-                color: #FFFFFF;
+                background: rgba(48, 209, 88, 0.18);
+                color: #30D158;
             }
             """
         )
         self._proxy_btn.clicked.connect(self._show_proxy_menu)
         toolbar.addWidget(self._proxy_btn)
-        
+
+        toolbar.addSeparator()
+
         settings_btn = QPushButton("⚙️")
-        settings_btn.setFixedSize(34, 32)
+        settings_btn.setFixedSize(32, 30)
         settings_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         settings_btn.setToolTip("Ayarlar")
         settings_btn.setStyleSheet(quick_btn_style)
@@ -2764,35 +2839,43 @@ class VisionaryBrowser(QMainWindow):
             truncated = title[:25] + "…" if len(title) > 25 else title
             self._tab_widget.setTabText(index, truncated)
 
-    def _update_address_bar(self, tab: BrowserTab, url: QUrl) -> None:
-        """Aktif sekmenin URL'si değiştiğinde adres çubuğunu günceller."""
+    def _update_address_bar(self, tab, url: QUrl) -> None:
+        """Aktif sekmenin URL'si değiştiğinde adres çubuğunu ve kilit ikonunu günceller."""
         if tab == self._current_tab():
-            self._address_bar.setText(url.toString())
+            url_str = url.toString()
+            self._address_bar.setText(url_str)
+
+            # Kilit / bağlantı ikonu güncelle (Safari davranışı)
+            if hasattr(self, "_lock_lbl"):
+                if url_str.startswith("https://"):
+                    self._lock_lbl.setText("🔒")
+                    self._lock_lbl.setToolTip("Bağlantı güvenli (HTTPS)")
+                elif url_str.startswith("http://"):
+                    self._lock_lbl.setText("⚠️")
+                    self._lock_lbl.setToolTip("Bağlantı güvensiz (HTTP)")
+                elif url_str.startswith("about:") or url_str == "":
+                    self._lock_lbl.setText("🔍")
+                    self._lock_lbl.setToolTip("")
+                else:
+                    self._lock_lbl.setText("🔍")
+                    self._lock_lbl.setToolTip("")
 
     # ─── Navigasyon ───────────────────────────────────────────────
 
-    def _navigate_to_url(self) -> None:
-        """Adres çubuğundaki URL'ye gider."""
-        # Müzik panelini küçült
+    def _navigate_to_url_str(self, url: str) -> None:
+        """SmartAddressBar.navigate sinyalinden gelen işlenmiş URL'ye git."""
         self._auto_minimize_music()
-
-        url_text = self._address_bar.text().strip()
-        if not url_text:
-            return
-
-        # Arama terimi mi yoksa URL mi?
-        if " " in url_text or "." not in url_text:
-            # Arama terimi — Google'da ara
-            url_text = f"https://www.google.com/search?q={url_text}"
-
         tab = self._current_tab()
         if tab:
             if hasattr(tab, "navigate_to"):
-                tab.navigate_to(url_text)
+                tab.navigate_to(url)
             else:
-                if not url_text.startswith(("http://", "https://")):
-                    url_text = "https://" + url_text
-                tab.setUrl(QUrl(url_text))
+                tab.setUrl(QUrl(url))
+
+    def _navigate_to_url(self) -> None:
+        """Adres çubuğundaki URL'ye gider (kısayol uyumluluğu)."""
+        if hasattr(self, "_address_bar") and isinstance(self._address_bar, SmartAddressBar):
+            self._address_bar._emit_navigate()
 
     def _go_back(self) -> None:
         tab = self._current_tab()
@@ -3100,6 +3183,51 @@ class VisionaryBrowser(QMainWindow):
         self._tab_widget.setCurrentIndex(index)
         QTimer.singleShot(50, self._update_new_tab_btn_pos)
         
+    def _sync_tor_ui_state(self) -> None:
+        """
+        Uygulama başlarken kaydedilmiş Tor durumunu UI ve engine'e yansıtır.
+
+        .tor_state dosyası 'enabled=True' ise ve port 9050 açıksa:
+          - tor_manager._is_connected = True  (engine durumu güncellenir)
+          - _tor_btn görsel olarak aktif gösterilir
+
+        Bu olmadan: proxy Chromium bayrağı üzerinden aktif olmasına rağmen
+        buton 'kapalı' görünür ve _toggle_tor yanlış yönde çalışır.
+        """
+        from privacy_engine import is_tor_mode_enabled
+        if not is_tor_mode_enabled():
+            return
+
+        # Port açık mı kontrol et (Tor aslında çalışıyor mu?)
+        tor_port_open = self._privacy_engine.tor_manager._is_tor_port_open()
+
+        if tor_port_open:
+            # Engine iç durumunu düzelt
+            self._privacy_engine.tor_manager._is_connected = True
+        # Port kapalı olsa bile UI'yi 'bağlı' göster — Chromium zaten
+        # bayrak üzerinden proxy'e yönlendirilmiş durumda.
+        # Kullanıcı kapatmak isteyebilir, doğru buton durumu bunu sağlar.
+
+        if hasattr(self, "_tor_btn"):
+            self._tor_btn.setChecked(True)
+            if tor_port_open:
+                self._tor_btn.setToolTip("Tor Ağı: Bağlı ✓")
+            else:
+                self._tor_btn.setToolTip("Tor Ağı: Proxy Aktif (Tor servisi bulunamadı)")
+
+        # Video bypass butonunu göster
+        if hasattr(self, "_tor_video_bypass_btn"):
+            self._tor_video_bypass_btn.show()
+
+        # Durum çubuğuna kısa bilgi ver
+        if hasattr(self, 'statusBar') and callable(self.statusBar):
+            if tor_port_open:
+                self.statusBar().showMessage("🧅 Tor ağı aktif (önceki oturumdan devam ediyor)", 4000)
+            else:
+                self.statusBar().showMessage(
+                    "🧅 Tor proxy bayrağı aktif — Tor servisini başlatmak için 🧅 butonuna tıklayın", 6000
+                )
+
     def _toggle_tor(self) -> None:
         """Tor ağını aç/kapat."""
         if not hasattr(self, '_privacy_engine'):
@@ -3114,6 +3242,8 @@ class VisionaryBrowser(QMainWindow):
             if hasattr(self, "_tor_btn"):
                 self._tor_btn.setToolTip("Tor Ağı: Kapalı")
                 self._tor_btn.setChecked(False)
+            if hasattr(self, "_tor_video_bypass_btn"):
+                self._tor_video_bypass_btn.hide()
             self.statusBar().showMessage("🧅 Tor ağı kapatıldı. Tam devre dışı bırakmak için uygulamayı yeniden başlatın.", 5000)
             
             # Yeniden başlatma öner
@@ -3133,6 +3263,8 @@ class VisionaryBrowser(QMainWindow):
                 if hasattr(self, "_tor_btn"):
                     self._tor_btn.setToolTip("Tor Ağı: Bağlı ✓")
                     self._tor_btn.setChecked(True)
+                if hasattr(self, "_tor_video_bypass_btn"):
+                    self._tor_video_bypass_btn.show()
                 
                 # Yeniden başlatma öner
                 reply = QMessageBox.question(
@@ -3153,6 +3285,58 @@ class VisionaryBrowser(QMainWindow):
                     6000
                 )
                 
+    def _bypass_tor_for_current_page(self) -> None:
+        """
+        Aktif sekmenin platformunu Tor bypass listesine ekler ve
+        uygulamayı yeniden başlatır.
+
+        Yalnızca mevcut sekmenin platformu (CDN dahil) bypass edilir;
+        diğer tüm trafik Tor üzerinden geçmeye devam eder.
+        """
+        from privacy_engine import get_video_bypass_for_url, save_tor_bypass_domains
+        from PyQt6.QtWidgets import QMessageBox
+
+        # Aktif sekmenin URL'sini al
+        current_url = ""
+        tab = self._tab_widget.currentWidget()
+        if tab and hasattr(tab, "url"):
+            current_url = tab.url().toString()
+
+        if not current_url or current_url in ("about:blank", ""):
+            QMessageBox.information(
+                self, "Tor Video Bypass",
+                "Bypass uygulanacak aktif bir sayfa bulunamadı.\n"
+                "Lütfen bir video sayfasına gidin ve tekrar deneyin."
+            )
+            return
+
+        bypass_domains = get_video_bypass_for_url(current_url)
+        if not bypass_domains:
+            QMessageBox.warning(
+                self, "Tor Video Bypass",
+                f"Bu URL için bilinen bir platform bypass listesi bulunamadı:\n{current_url}\n\n"
+                "Manuel olarak ayarlamak için Tor'u kapatıp tekrar açabilirsiniz."
+            )
+            return
+
+        # Hangi platform ve ne ekleneceğini göster
+        from urllib.parse import urlparse
+        host = (urlparse(current_url).hostname or current_url).removeprefix("www.")
+        domain_list = "\n".join(f"  • {d}" for d in bypass_domains)
+
+        reply = QMessageBox.question(
+            self, "Tor Video Bypass",
+            f"'{host}' platformu Tor'u atlamak üzere ayarlanacak.\n\n"
+            f"Bypass edilecek domainler:\n{domain_list}\n\n"
+            "Diğer tüm trafik Tor üzerinden geçmeye devam edecek.\n\n"
+            "Değişiklik için uygulama yeniden başlatılacak. Devam edilsin mi?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+
+        if reply == QMessageBox.StandardButton.Yes:
+            save_tor_bypass_domains(bypass_domains)
+            self._restart_app()
+
     def _restart_app(self) -> None:
         """Uygulamayı yeniden başlat."""
         import sys

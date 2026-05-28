@@ -326,9 +326,9 @@ class SafeBrowsingClient:
         self._enabled = bool(self._api_key)
         
         if not self._enabled:
-            logger.warning(
-                "Google Safe Browsing API anahtarı bulunamadı. "
-                "GOOGLE_SAFE_BROWSING_API_KEY ortam değişkenini ayarlayın."
+            logger.info(
+                "Google Safe Browsing API anahtari bulunamadi; bulut taramasi devre disi. "
+                "Etkinlestirmek icin GOOGLE_SAFE_BROWSING_API_KEY ayarlayin."
             )
             
     def is_enabled(self) -> bool:

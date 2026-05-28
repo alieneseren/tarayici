@@ -1,36 +1,114 @@
 /**
  * Visionary Navigator — DOM Interceptor
- * Dinamik SPA sayfalarında ürün görsellerini algılar ve "Üstünde Dene" butonu enjekte eder.
+ * Dinamik SPA sayfalarında ürün görsellerini algılar ve
+ * "Üstünde Dene" (AR kıyafet) + "Yüzünü Dene" (FaceSwap) butonları enjekte eder.
  * MutationObserver + IntersectionObserver ile lazy-load uyumlu çalışır.
- * QWebChannel üzerinden Python backend'ine mesaj gönderir.
+ *
+ * Desteklenen siteler:
+ *   Trendyol, Hepsiburada, DS Damat, Beymen, Koton, LCWaikiki,
+ *   Mavi, Defacto, Boyner, Zara, H&M, N11, Amazon TR,
+ *   ve genel e-ticaret siteleri.
  */
 
 (function() {
     'use strict';
 
-    // Zaten enjekte edilmişse tekrar çalıştırma
     if (window.__visionaryInterceptorLoaded) return;
     window.__visionaryInterceptorLoaded = true;
 
     // ─── Yapılandırma ────────────────────────────────────────────
     const CONFIG = {
-        // Ürün görseli algılama desenleri
+        // Geniş ürün görseli algılama desenleri
         imagePatterns: [
+            // ── Genel e-ticaret ──────────────────────────────
             'img[src*="product"]',
             'img[src*="urun"]',
             'img[data-src*="product"]',
             'img[data-src*="urun"]',
-            'img.detail-section-img',         // Trendyol
-            'img.product-image',              // Hepsiburada
-            'img[src*="mnresize"]',           // Trendyol CDN
-            'img[src*="productimages"]',      // Hepsiburada CDN
-            'img[data-original]',             // Lazy-load varyantı
+            'img[data-original]',
+
+            // ── Trendyol ─────────────────────────────────────
+            'img.detail-section-img',
+            'img[src*="mnresize"]',
+            'img[src*="ty1.imgix"]',
+            'img.product-slide-img',
+
+            // ── Hepsiburada ──────────────────────────────────
+            'img.product-image',
+            'img[src*="productimages"]',
+            'img[src*="hepsiburada.net"]',
+
+            // ── DS Damat ─────────────────────────────────────
+            'img[src*="dsdamat"]',
+            'img[src*="statics.boyner"]',
+            '.product-detail img',
+            '.product-image-container img',
+            '.gallery-image img',
+            '.image-wrapper img',
+            '.slick-slide img',
+
+            // ── Beymen ───────────────────────────────────────
+            'img[src*="beymen.com"]',
+            'img[src*="byndynet"]',
+            '.o-productDetail__image img',
+            '.product-detail-image img',
+
+            // ── Koton ────────────────────────────────────────
+            'img[src*="koton.com"]',
+            '.product-detail-slider img',
+            '.pdp-image img',
+
+            // ── LCWaikiki ────────────────────────────────────
+            'img[src*="lcwaikiki"]',
+            'img[src*="lcw-cdn"]',
+            '.product-detail-main-image img',
+
+            // ── Mavi ─────────────────────────────────────────
+            'img[src*="mavi.com"]',
+            '.product-main-image img',
+
+            // ── Defacto ──────────────────────────────────────
+            'img[src*="defacto"]',
+            '.product-detail-images img',
+
+            // ── Boyner ───────────────────────────────────────
+            'img[src*="boyner.com"]',
+
+            // ── Zara / H&M / global ─────────────────────────
+            'img[src*="zara.com"]',
+            'img[src*="lp2.hm.com"]',
+            '.media-image img',
+            'img[src*="scene7"]',
+
+            // ── N11 ──────────────────────────────────────────
+            'img[src*="n11.com"]',
+            '.productImage img',
+
+            // ── Amazon TR ────────────────────────────────────
+            'img[src*="images-amazon"]',
+            '#landingImage',
+            '#imgBlkFront',
+
+            // ── Genel SPA desenleri ──────────────────────────
+            '[data-testid*="product"] img',
+            '[data-testid*="image"] img',
+            '.product-gallery img',
+            '.product-slider img',
+            '.pdp-gallery img',
+            '.carousel-item img',
+            '.swiper-slide img',
+            'picture source + img',
         ],
-        // Minimum boyut filtresi — çok küçük görselleri atla
-        minWidth: 150,
-        minHeight: 150,
-        // Buton stilleri
-        buttonStyle: `
+        // Minimum boyut filtresi
+        minWidth: 180,
+        minHeight: 220,
+
+        // Yüz değiştirme butonu: daha yüksek görseller (mankenli)
+        faceSwapMinHeight: 300,
+        faceSwapMinAspectRatio: 0.5,  // height/width > 0.5
+
+        // ── Buton stilleri ────────────────────────────────────────
+        tryOnButtonStyle: `
             position: absolute;
             bottom: 12px;
             right: 12px;
@@ -50,10 +128,25 @@
             opacity: 0;
             transform: translateY(8px);
         `,
-        buttonHoverStyle: `
-            box-shadow: 0 6px 25px rgba(108, 99, 255, 0.6);
-            transform: translateY(-2px) scale(1.03);
-            opacity: 1;
+        faceSwapButtonStyle: `
+            position: absolute;
+            bottom: 12px;
+            left: 12px;
+            z-index: 10000;
+            background: linear-gradient(135deg, #FF6B6B, #EE5A24);
+            color: #FFFFFF;
+            border: none;
+            border-radius: 8px;
+            padding: 8px 16px;
+            font-size: 13px;
+            font-weight: 700;
+            font-family: "Inter", "Segoe UI", sans-serif;
+            cursor: pointer;
+            box-shadow: 0 4px 15px rgba(255, 107, 107, 0.4);
+            transition: all 0.3s ease;
+            backdrop-filter: blur(4px);
+            opacity: 0;
+            transform: translateY(8px);
         `,
     };
 
@@ -67,13 +160,11 @@
                 console.log('[Visionary] QWebChannel bağlantısı kuruldu.');
             });
         } else {
-            // QWebChannel yüklenmemişse 500ms sonra tekrar dene
             setTimeout(initWebChannel, 500);
         }
     }
     initWebChannel();
 
-    // Python'a mesaj gönderme
     function sendToPython(action, data) {
         if (pyBridge && pyBridge.onDomMessage) {
             pyBridge.onDomMessage(JSON.stringify({ action: action, data: data }));
@@ -85,15 +176,39 @@
     // ─── Buton Enjeksiyonu ───────────────────────────────────────
     const processedImages = new WeakSet();
 
-    function injectTryOnButton(imgElement) {
-        // Aynı görsele tekrar enjekte etme
+    /**
+     * Görselin mankenli bir fotoğraf olup olmadığını heuristic olarak belirler.
+     * Yüksek, dikey oranı olan görseller genellikle manken fotoğrafıdır.
+     */
+    function isLikelyModelPhoto(imgElement) {
+        const rect = imgElement.getBoundingClientRect();
+        if (rect.height < CONFIG.faceSwapMinHeight) return false;
+        const ratio = rect.height / Math.max(rect.width, 1);
+        return ratio >= CONFIG.faceSwapMinAspectRatio;
+    }
+
+    /**
+     * URL veya context'e göre bu bir moda/giyim sitesi mi?
+     */
+    function isFashionSite() {
+        const host = window.location.hostname.toLowerCase();
+        const fashionDomains = [
+            'trendyol', 'hepsiburada', 'dsdamat', 'beymen', 'koton',
+            'lcwaikiki', 'mavi', 'defacto', 'boyner', 'zara', 'hm.com',
+            'n11', 'amazon', 'morhipo', 'modanisa', 'penti', 'ipekyol',
+            'vakko', 'networkfashion', 'colins', 'uspoloassn', 'kiğılı',
+            'kigili', 'damat', 'hatemoğlu', 'hatemoglu', 'sarar',
+            'waikiki', 'flo', 'atasun', 'gratis'
+        ];
+        return fashionDomains.some(d => host.includes(d));
+    }
+
+    function injectButtons(imgElement) {
         if (processedImages.has(imgElement)) return;
 
-        // Boyut filtresi
         const rect = imgElement.getBoundingClientRect();
         if (rect.width < CONFIG.minWidth || rect.height < CONFIG.minHeight) return;
 
-        // Üst elementi position:relative yap (buton konumlandırması için)
         const parent = imgElement.parentElement;
         if (!parent) return;
 
@@ -102,43 +217,18 @@
             parent.style.position = 'relative';
         }
 
-        // "Üstünde Dene" butonunu oluştur
-        const button = document.createElement('button');
-        button.textContent = '👕 Üstünde Dene';
-        button.setAttribute('style', CONFIG.buttonStyle);
-        button.className = 'visionary-tryon-btn';
-        button.setAttribute('data-visionary', 'true');
+        const imgSrc = imgElement.src || imgElement.dataset.src || imgElement.dataset.original || '';
 
-        // Görsel üzerine gelince butonu göster
-        parent.addEventListener('mouseenter', () => {
-            button.style.opacity = '1';
-            button.style.transform = 'translateY(0)';
-        });
+        // ── "Üstünde Dene" butonu (AR kıyafet overlay) ──────────
+        const tryOnBtn = document.createElement('button');
+        tryOnBtn.textContent = '👕 Üstünde Dene';
+        tryOnBtn.setAttribute('style', CONFIG.tryOnButtonStyle);
+        tryOnBtn.className = 'visionary-tryon-btn';
+        tryOnBtn.setAttribute('data-visionary', 'true');
 
-        parent.addEventListener('mouseleave', () => {
-            button.style.opacity = '0';
-            button.style.transform = 'translateY(8px)';
-        });
-
-        // Buton hover efekti
-        button.addEventListener('mouseenter', () => {
-            button.style.boxShadow = '0 6px 25px rgba(108, 99, 255, 0.6)';
-            button.style.transform = 'translateY(-2px) scale(1.03)';
-        });
-
-        button.addEventListener('mouseleave', () => {
-            button.style.boxShadow = '0 4px 15px rgba(108, 99, 255, 0.4)';
-            button.style.transform = 'translateY(0)';
-        });
-
-        // Tıklama — Python'a ürün görselini gönder
-        button.addEventListener('click', (e) => {
+        tryOnBtn.addEventListener('click', (e) => {
             e.preventDefault();
             e.stopPropagation();
-
-            const imgSrc = imgElement.src || imgElement.dataset.src || imgElement.dataset.original || '';
-            console.log('[Visionary] Üstünde Dene tıklandı:', imgSrc);
-
             sendToPython('try_on', {
                 imageSrc: imgSrc,
                 imageAlt: imgElement.alt || '',
@@ -146,7 +236,67 @@
             });
         });
 
-        parent.appendChild(button);
+        // ── "Yüzünü Dene" butonu (FaceSwap) ─────────────────────
+        let faceSwapBtn = null;
+        if (isLikelyModelPhoto(imgElement) || isFashionSite()) {
+            faceSwapBtn = document.createElement('button');
+            faceSwapBtn.textContent = '🎭 Yüzünü Dene';
+            faceSwapBtn.setAttribute('style', CONFIG.faceSwapButtonStyle);
+            faceSwapBtn.className = 'visionary-faceswap-btn';
+            faceSwapBtn.setAttribute('data-visionary', 'true');
+
+            faceSwapBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                console.log('[Visionary] Yüzünü Dene tıklandı:', imgSrc);
+                sendToPython('face_try_on', {
+                    imageSrc: imgSrc,
+                    imageAlt: imgElement.alt || '',
+                    pageUrl: window.location.href,
+                });
+            });
+
+            // Hover efektleri
+            faceSwapBtn.addEventListener('mouseenter', () => {
+                faceSwapBtn.style.boxShadow = '0 6px 25px rgba(255, 107, 107, 0.6)';
+                faceSwapBtn.style.transform = 'translateY(-2px) scale(1.03)';
+            });
+            faceSwapBtn.addEventListener('mouseleave', () => {
+                faceSwapBtn.style.boxShadow = '0 4px 15px rgba(255, 107, 107, 0.4)';
+                faceSwapBtn.style.transform = 'translateY(0)';
+            });
+        }
+
+        // Hover: butonları göster/gizle
+        parent.addEventListener('mouseenter', () => {
+            tryOnBtn.style.opacity = '1';
+            tryOnBtn.style.transform = 'translateY(0)';
+            if (faceSwapBtn) {
+                faceSwapBtn.style.opacity = '1';
+                faceSwapBtn.style.transform = 'translateY(0)';
+            }
+        });
+        parent.addEventListener('mouseleave', () => {
+            tryOnBtn.style.opacity = '0';
+            tryOnBtn.style.transform = 'translateY(8px)';
+            if (faceSwapBtn) {
+                faceSwapBtn.style.opacity = '0';
+                faceSwapBtn.style.transform = 'translateY(8px)';
+            }
+        });
+
+        // tryOn hover efektleri
+        tryOnBtn.addEventListener('mouseenter', () => {
+            tryOnBtn.style.boxShadow = '0 6px 25px rgba(108, 99, 255, 0.6)';
+            tryOnBtn.style.transform = 'translateY(-2px) scale(1.03)';
+        });
+        tryOnBtn.addEventListener('mouseleave', () => {
+            tryOnBtn.style.boxShadow = '0 4px 15px rgba(108, 99, 255, 0.4)';
+            tryOnBtn.style.transform = 'translateY(0)';
+        });
+
+        parent.appendChild(tryOnBtn);
+        if (faceSwapBtn) parent.appendChild(faceSwapBtn);
         processedImages.add(imgElement);
     }
 
@@ -159,15 +309,14 @@
             try {
                 const images = root.querySelectorAll(selector);
                 images.forEach(img => {
-                    // Görsel yüklendikten sonra enjekte et
                     if (img.complete && img.naturalWidth > 0) {
-                        injectTryOnButton(img);
+                        injectButtons(img);
                     } else {
-                        img.addEventListener('load', () => injectTryOnButton(img), { once: true });
+                        img.addEventListener('load', () => injectButtons(img), { once: true });
                     }
                 });
             } catch (e) {
-                // Geçersiz selector — sessizce atla
+                // Geçersiz selector
             }
         });
     }
@@ -177,11 +326,9 @@
         mutations.forEach(mutation => {
             mutation.addedNodes.forEach(node => {
                 if (node.nodeType === Node.ELEMENT_NODE) {
-                    // Eklenen düğüm bir görsel mi?
                     if (node.tagName === 'IMG') {
-                        injectTryOnButton(node);
+                        injectButtons(node);
                     }
-                    // Veya görsel içeriyor mu?
                     scanForProductImages(node);
                 }
             });
@@ -193,10 +340,9 @@
         entries.forEach(entry => {
             if (entry.isIntersecting) {
                 const img = entry.target;
-                // data-src → src dönüşümünü bekle
                 setTimeout(() => {
                     if (img.src && img.naturalWidth > 0) {
-                        injectTryOnButton(img);
+                        injectButtons(img);
                     }
                 }, 300);
                 intersectionObserver.unobserve(img);
@@ -204,7 +350,6 @@
         });
     }, { threshold: 0.1 });
 
-    // Tüm görselleri gözlemle
     function observeAllImages() {
         document.querySelectorAll('img[data-src], img[data-original], img[loading="lazy"]').forEach(img => {
             if (!processedImages.has(img)) {
@@ -215,34 +360,29 @@
 
     // ─── Başlatma ────────────────────────────────────────────────
     function initialize() {
-        // Mevcut görselleri tara
         scanForProductImages(document.body);
-
-        // Lazy-load görselleri gözlemle
         observeAllImages();
 
-        // Dinamik değişiklikleri izle
         mutationObserver.observe(document.body, {
             childList: true,
             subtree: true,
         });
 
-        console.log('[Visionary] DOM Interceptor aktif.');
+        console.log('[Visionary] DOM Interceptor aktif — FaceSwap desteği açık.');
     }
 
-    // DOM hazır olduğunda başlat
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', initialize);
     } else {
         initialize();
     }
 
-    // SPA navigasyon değişikliklerini algıla
+    // SPA navigasyon
     let lastUrl = window.location.href;
     setInterval(() => {
         if (window.location.href !== lastUrl) {
             lastUrl = window.location.href;
-            console.log('[Visionary] Sayfa değişikliği algılandı, tekrar taranıyor...');
+            console.log('[Visionary] Sayfa değişikliği — tekrar taranıyor...');
             setTimeout(() => {
                 scanForProductImages(document.body);
                 observeAllImages();

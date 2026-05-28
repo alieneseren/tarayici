@@ -507,7 +507,7 @@ class ProxyToast(QWidget):
             color: white;
             font-size: 13px;
             font-weight: 500;
-            font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', sans-serif;
+            font-family: 'Helvetica Neue', sans-serif;
         """)
         layout.addWidget(self._msg_label)
         
@@ -1002,16 +1002,46 @@ def get_chromium_proxy_args(proxy: ProxyConfig) -> List[str]:
     return args
 
 
+def _get_active_macos_interface() -> str:
+    """
+    Aktif macOS ağ servis adını dinamik olarak tespit eder.
+    Farklı dil ayarları veya 'Ethernet' / 'USB LAN' senaryolarını destekler.
+    """
+    import subprocess
+    try:
+        result = subprocess.run(
+            ['networksetup', '-listallnetworkservices'],
+            capture_output=True, text=True, timeout=5
+        )
+        lines = result.stdout.splitlines()
+        # İlk satır başlık metnidir; '*' ile başlayanlar devre dışı servislerdir.
+        for line in lines[1:]:
+            line = line.strip()
+            if not line or line.startswith('*'):
+                continue
+            # Kablosuz ve kablolu bağlantıları öncelikle döndür.
+            if any(kw in line for kw in ('Wi-Fi', 'Ethernet', 'USB', 'Thunderbolt')):
+                return line
+        # Öncelikli eşleşme yoksa ilk aktif servisi döndür.
+        for line in lines[1:]:
+            line = line.strip()
+            if line and not line.startswith('*'):
+                return line
+    except Exception:
+        pass
+    return "Wi-Fi"  # son çare varsayılan
+
+
 def set_macos_system_proxy(proxy: ProxyConfig) -> bool:
     """
     macOS sistem proxy ayarlarını değiştir.
     Yönetici yetkisi gerektirebilir.
     """
     import subprocess
-    
+
     try:
-        interface = "Wi-Fi"  # veya "Ethernet"
-        
+        interface = _get_active_macos_interface()
+
         if proxy.proxy_type == ProxyType.HTTP:
             subprocess.run([
                 'networksetup', '-setwebproxy', interface,
@@ -1026,10 +1056,10 @@ def set_macos_system_proxy(proxy: ProxyConfig) -> bool:
                 'networksetup', '-setsocksfirewallproxy', interface,
                 proxy.host, str(proxy.port)
             ], check=True)
-            
-        logger.info("macOS sistem proxy ayarlandı")
+
+        logger.info(f"macOS sistem proxy ayarlandı ({interface})")
         return True
-        
+
     except Exception as e:
         logger.error(f"macOS proxy hatası: {e}")
         return False
@@ -1038,17 +1068,17 @@ def set_macos_system_proxy(proxy: ProxyConfig) -> bool:
 def clear_macos_system_proxy() -> bool:
     """macOS sistem proxy ayarlarını temizle."""
     import subprocess
-    
+
     try:
-        interface = "Wi-Fi"
-        
+        interface = _get_active_macos_interface()
+
         subprocess.run(['networksetup', '-setwebproxystate', interface, 'off'], check=True)
         subprocess.run(['networksetup', '-setsecurewebproxystate', interface, 'off'], check=True)
         subprocess.run(['networksetup', '-setsocksfirewallproxystate', interface, 'off'], check=True)
-        
-        logger.info("macOS sistem proxy temizlendi")
+
+        logger.info(f"macOS sistem proxy temizlendi ({interface})")
         return True
-        
+
     except Exception as e:
         logger.error(f"macOS proxy temizleme hatası: {e}")
         return False

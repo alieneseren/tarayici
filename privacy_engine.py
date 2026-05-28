@@ -363,10 +363,12 @@ class TorManager(QObject):
             
         try:
             # Tor'u arka planda başlat
+            # stdout/stderr PIPE kullanmıyoruz: tampon dolunca süreç kilitlenebilir.
+            # --ControlPort ekleyerek new_identity() için kontrol bağlantısını etkinleştiriyoruz.
             self._tor_process = subprocess.Popen(
-                [tor_bin],
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
+                [tor_bin, '--ControlPort', str(self.TOR_CONTROL_PORT)],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
             )
             
             # Bağlantıyı bekle (max 30 saniye)
@@ -452,7 +454,11 @@ class TorManager(QObject):
             self.ip_changed.emit(ip)
             logger.info(f"Tor IP: {ip}")
         except Exception as e:
-            logger.warning(f"IP alınamadı: {e}")
+            msg = str(e)
+            if "Missing dependencies for SOCKS support" in msg:
+                logger.info("Tor IP kontrolu atlandi: PySocks kurulu degil (pip install PySocks)")
+            else:
+                logger.warning(f"IP alınamadı: {e}")
             
     def get_proxy_settings(self) -> dict:
         """Qt proxy ayarları için dict döndür."""
@@ -588,21 +594,30 @@ def apply_tor_proxy_to_profile(profile, tor_manager: TorManager):
 
 
 def remove_proxy():
-    """Proxy'yi kaldır."""
+    """Proxy'yi kaldır ve kayıtlı bypass listesini temizle."""
     from PyQt6.QtNetwork import QNetworkProxy
     QNetworkProxy.setApplicationProxy(QNetworkProxy(QNetworkProxy.ProxyType.NoProxy))
     _save_tor_state(False)
-    logger.info("Proxy kaldırıldı.")
+    logger.info("Proxy kaldırıldı, bypass listesi temizlendi.")
 
 
 def _save_tor_state(enabled: bool):
-    """Tor durumunu kaydet."""
+    """Tor durumunu kaydet. Kapatılırken bypass listesi de temizlenir."""
     import json
     import config
     state_file = os.path.join(config.BASE_DIR, ".tor_state")
     try:
-        with open(state_file, 'w') as f:
-            json.dump({"enabled": enabled}, f)
+        # Mevcut bypass listesini koru — sadece Tor KAPANIRKEN temizle
+        state: dict = {"enabled": enabled, "bypass_domains": []}
+        if enabled and os.path.exists(state_file):
+            try:
+                with open(state_file, "r") as f:
+                    prev = json.load(f)
+                state["bypass_domains"] = prev.get("bypass_domains", [])
+            except Exception:
+                pass
+        with open(state_file, "w") as f:
+            json.dump(state, f)
     except Exception as e:
         logger.warning(f"Tor durumu kaydedilemedi: {e}")
 
@@ -622,8 +637,89 @@ def is_tor_mode_enabled() -> bool:
     return False
 
 
+# Platform → bypass edilecek domain listesi haritası.
+# Kullanıcı 'Bu videoyu Tor'suz aç' dediğinde URL'ye göre uygun set seçilir.
+_VIDEO_PLATFORM_BYPASS: dict = {
+    "youtube.com":     ["*.youtube.com", "*.googlevideo.com", "*.ytimg.com", "*.ggpht.com"],
+    "youtu.be":        ["*.youtube.com", "*.googlevideo.com", "*.ytimg.com"],
+    "twitch.tv":       ["*.twitch.tv", "*.jtvnw.net", "*.twitchsvc.net", "*.twitchdns.net"],
+    "netflix.com":     ["*.netflix.com", "*.nflxvideo.net", "*.nflxext.com"],
+    "vimeo.com":       ["*.vimeo.com", "*.vimeocdn.com"],
+    "dailymotion.com": ["*.dailymotion.com", "*.dmcdn.net"],
+    "twitter.com":     ["*.twitter.com", "*.twimg.com"],
+    "x.com":           ["*.x.com", "*.twimg.com"],
+    "instagram.com":   ["*.instagram.com", "*.cdninstagram.com", "*.fbcdn.net"],
+    "facebook.com":    ["*.facebook.com", "*.fbcdn.net", "*.fb.com"],
+    "tiktok.com":      ["*.tiktok.com", "*.tiktokcdn.com", "*.tiktokv.com"],
+    "spotify.com":     ["*.spotify.com", "*.scdn.co", "*.spotifycdn.com"],
+    "primevideo.com":  ["*.primevideo.com", "*.cloudfront.net", "*.akamaized.net"],
+    "disneyplus.com":  ["*.disneyplus.com", "*.bamgrid.com", "*.dssott.com"],
+}
+
+
+def get_video_bypass_for_url(url: str) -> list:
+    """
+    URL'ye göre bypass edilmesi gereken domain listesini döndür.
+    Bilinen platformlar için hazır CDN seti; bilinmeyenler için sadece host.
+    """
+    from urllib.parse import urlparse
+    try:
+        host = (urlparse(url).hostname or "").lower().removeprefix("www.")
+        for platform, domains in _VIDEO_PLATFORM_BYPASS.items():
+            if platform in host:
+                return domains
+        # Bilinmeyen domain — host'u doğrudan bypass et
+        return [f"*.{host}", host] if host else []
+    except Exception:
+        return []
+
+
+def save_tor_bypass_domains(new_domains: list) -> None:
+    """Bypass domain listesini .tor_state dosyasına ekleyerek kaydet."""
+    import json
+    import config
+    state_file = os.path.join(config.BASE_DIR, ".tor_state")
+    try:
+        state = {"enabled": True, "bypass_domains": []}
+        if os.path.exists(state_file):
+            with open(state_file, "r") as f:
+                state = json.load(f)
+        existing = set(state.get("bypass_domains", []))
+        existing.update(new_domains)
+        state["bypass_domains"] = sorted(existing)
+        with open(state_file, "w") as f:
+            json.dump(state, f)
+        logger.info(f"Bypass domains kaydedildi: {new_domains}")
+    except Exception as e:
+        logger.warning(f"Bypass domains kaydedilemedi: {e}")
+
+
+def get_saved_bypass_domains() -> list:
+    """Kaydedilmiş bypass domain listesini döndür."""
+    import json
+    import config
+    state_file = os.path.join(config.BASE_DIR, ".tor_state")
+    try:
+        if os.path.exists(state_file):
+            with open(state_file, "r") as f:
+                return json.load(f).get("bypass_domains", [])
+    except Exception:
+        pass
+    return []
+
+
 def get_tor_chromium_flags() -> str:
-    """Tor için Chromium flags döndür."""
+    """
+    Tor için Chromium başlatma bayraklarını döndür.
+
+    Proxy: socks5://127.0.0.1:9050 — tüm HTTP/HTTPS trafiği Tor'a yönlenir.
+    Bypass: yalnızca kullanıcının 'Bu Videoyu Tor'suz Aç' dediği
+    platformların CDN'leri eklenir; global medya bypass yoktur.
+    """
     if is_tor_mode_enabled():
-        return "--proxy-server=socks5://127.0.0.1:9050"
+        flags = "--proxy-server=socks5://127.0.0.1:9050"
+        saved = get_saved_bypass_domains()
+        if saved:
+            flags += f" --proxy-bypass-list={';'.join(saved)}"
+        return flags
     return ""

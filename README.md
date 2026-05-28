@@ -84,6 +84,18 @@ pip install -r requirements.txt
 python main.py
 ```
 
+### macOS Setup File (Clean + Install)
+
+If you want a single setup file that cleans old build artifacts, installs dependencies,
+builds the `.app`, and installs it into `/Applications`, use:
+
+```bash
+chmod +x setup_macos.sh setup.command
+./setup_macos.sh
+```
+
+Or just double-click `setup.command` in Finder.
+
 ### Optional: Build Executable
 
 **macOS:**

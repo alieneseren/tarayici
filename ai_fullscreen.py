@@ -468,7 +468,7 @@ class AIFullscreenPage(QWidget):
                             letter-spacing: 1.8px;">{name}</span>
             </div>
             <div style="color: {text_color}; font-size: 14px; line-height: 1.7;
-                        letter-spacing: 0.2px;">
+                        letter-spacing: 0.2px; white-space: pre-wrap;">
                 {safe_text}
             </div>
         </div>
@@ -659,9 +659,7 @@ class AIFullscreenPage(QWidget):
             '                    letter-spacing: 1.8px;">VİSİONARY AI</span>'
             '    </div>'
             '    <div id="ai-stream" style="color: #E8E8F0; font-size: 14px; line-height: 1.7;'
-            '                letter-spacing: 0.2px;">'
-            '        <span style="color: #565670;">▍</span>'
-            '    </div>'
+            '                letter-spacing: 0.2px;"></div>'
             '</div>'
         )
         self._chat_area.append(html)
@@ -679,10 +677,16 @@ class AIFullscreenPage(QWidget):
             batch += self._streaming_words.pop(0)
 
         # Mevcut HTML'in sonundaki cursor'ı kullanarak metin ekle
-        safe = batch.replace("<", "&lt;").replace(">", "&gt;").replace("\n", "<br>")
         cursor = self._chat_area.textCursor()
         cursor.movePosition(QTextCursor.MoveOperation.End)
-        cursor.insertHtml(f'<span style="color:#E8E8F0;font-size:14px;">{safe}</span>')
+        self._chat_area.setTextCursor(cursor)
+        
+        # Format koruması ve plain text ekleme (boşlukları korur)
+        fmt = cursor.charFormat()
+        fmt.setForeground(QColor("#E8E8F0"))
+        cursor.setCharFormat(fmt)
+        self._chat_area.insertPlainText(batch)
+        
         self._chat_area.moveCursor(QTextCursor.MoveOperation.End)
         self._chat_area.ensureCursorVisible()
 
@@ -694,10 +698,13 @@ class AIFullscreenPage(QWidget):
 
         while self._streaming_words:
             batch = self._streaming_words.pop(0)
-            safe = batch.replace("<", "&lt;").replace(">", "&gt;").replace("\n", "<br>")
             cursor = self._chat_area.textCursor()
             cursor.movePosition(QTextCursor.MoveOperation.End)
-            cursor.insertHtml(f'<span style="color:#E8E8F0;font-size:14px;">{safe}</span>')
+            self._chat_area.setTextCursor(cursor)
+            fmt = cursor.charFormat()
+            fmt.setForeground(QColor("#E8E8F0"))
+            cursor.setCharFormat(fmt)
+            self._chat_area.insertPlainText(batch)
 
         self._chat_area.moveCursor(QTextCursor.MoveOperation.End)
 

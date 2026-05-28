@@ -560,7 +560,7 @@ class AISidebar(QWidget):
                         letter-spacing: 1.5px; margin-bottom: 4px;">
                 {label}
             </div>
-            <div style="color: #E0E0E8; font-size: 13px; line-height: 1.6;">
+            <div style="color: #E0E0E8; font-size: 13px; line-height: 1.6; white-space: pre-wrap;">
                 {safe}
             </div>
         </div>

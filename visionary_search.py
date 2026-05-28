@@ -901,7 +901,7 @@ def _get_fallback_template() -> str:
     <meta charset="UTF-8">
     <title>Arama Sonuçları — Visionary</title>
     <style>
-        body { font-family: -apple-system, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
+        body { font-family: 'SF Pro Text', 'Segoe UI', sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
         .result-card { padding: 20px; margin: 10px 0; border: 1px solid #eee; border-radius: 12px; }
         .result-card:hover { background: #f9f9f9; }
         .result-title { color: #1a0dab; margin: 10px 0; }

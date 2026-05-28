@@ -434,6 +434,7 @@ class MusicFullPage(QWidget):
         # State
         self._current_title = ""
         self._current_url = ""
+        self._pending_video_url = ""
         self._current_duration = 0
         self._current_position = 0
         self._is_seeking = False
@@ -461,6 +462,7 @@ class MusicFullPage(QWidget):
         
         self._setup_ui()
         self._refresh_library()
+        self._refresh_playlists()
         self._load_trends()
         
     def set_browser(self, browser):
@@ -983,113 +985,183 @@ class MusicFullPage(QWidget):
     def _build_video_page(self) -> QWidget:
         """Video container (başta gizli, video oynarken göster)."""
         container = QFrame()
+        container.setObjectName("videoDeck")
         container.setStyleSheet(f"""
-            QFrame {{
-                background: #000000;
+            QFrame#videoDeck {{
+                background: transparent;
                 border: none;
             }}
         """)
         
         layout = QVBoxLayout(container)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(0)
+        layout.setContentsMargins(18, 18, 18, 14)
+        layout.setSpacing(14)
         
         # Video header
         header = QFrame()
-        header.setFixedHeight(50)
+        header.setObjectName("videoHero")
         header.setStyleSheet(f"""
-            QFrame {{
-                background: {_GLASS_BG};
-                border-bottom: 1px solid {_GLASS_BORDER};
+            QFrame#videoHero {{
+                background: qlineargradient(
+                    x1:0, y1:0, x2:1, y2:1,
+                    stop:0 rgba(24, 24, 38, 0.96),
+                    stop:0.6 rgba(52, 28, 86, 0.90),
+                    stop:1 rgba(104, 34, 92, 0.88)
+                );
+                border: 1px solid rgba(236, 72, 153, 0.18);
+                border-radius: 22px;
             }}
         """)
         header_layout = QHBoxLayout(header)
-        header_layout.setContentsMargins(16, 8, 16, 8)
-        header_layout.setSpacing(12)
-        
-        # Back button
-        self._video_back_btn = QPushButton("⬅ Geri")
-        self._video_back_btn.setStyleSheet(f"""
-            QPushButton {{
-                background: {_SURFACE2};
-                color: {_TEXT_PRIMARY};
-                border: none;
-                border-radius: 12px;
-                padding: 8px 16px;
-                font-size: 13px;
-                font-weight: 500;
-            }}
-            QPushButton:hover {{
-                background: {_SURFACE3};
+        header_layout.setContentsMargins(20, 16, 20, 16)
+        header_layout.setSpacing(16)
+
+        title_col = QVBoxLayout()
+        title_col.setSpacing(4)
+
+        eyebrow = QLabel("VIDEO SUITE")
+        eyebrow.setStyleSheet(f"""
+            QLabel {{
+                color: rgba(241, 245, 249, 0.62);
+                font-size: 10px;
+                font-weight: 700;
+                letter-spacing: 1.6px;
             }}
         """)
-        self._video_back_btn.clicked.connect(self._close_video)
-        header_layout.addWidget(self._video_back_btn)
-        
-        # Minimize button
-        self._video_minimize_btn = QPushButton("📐 Küçült")
-        self._video_minimize_btn.setStyleSheet(f"""
-            QPushButton {{
-                background: {_SURFACE2};
-                color: {_TEXT_PRIMARY};
-                border: none;
-                border-radius: 12px;
-                padding: 8px 16px;
-                font-size: 13px;
-                font-weight: 500;
-            }}
-            QPushButton:hover {{
-                background: {_SURFACE3};
-            }}
-        """)
-        self._video_minimize_btn.clicked.connect(self._minimize_video)
-        header_layout.addWidget(self._video_minimize_btn)
-        
-        self._video_title_label = QLabel("Video")
+        title_col.addWidget(eyebrow)
+
+        self._video_title_label = QLabel("Video salonu hazır")
         self._video_title_label.setStyleSheet(f"""
             QLabel {{
                 color: {_TEXT_PRIMARY};
-                font-size: 14px;
-                font-weight: 600;
+                font-size: 22px;
+                font-weight: 700;
             }}
         """)
-        header_layout.addWidget(self._video_title_label, 1)
+        title_col.addWidget(self._video_title_label)
+
+        self._video_meta_label = QLabel("Bir video seçtiğinizde oynatıcı, kalite bilgisi ve hızlı kontroller burada görünür.")
+        self._video_meta_label.setWordWrap(True)
+        self._video_meta_label.setStyleSheet(f"""
+            QLabel {{
+                color: {_TEXT_SECONDARY};
+                font-size: 12px;
+                padding-right: 12px;
+            }}
+        """)
+        title_col.addWidget(self._video_meta_label)
+
+        header_layout.addLayout(title_col, 1)
+
+        side_col = QVBoxLayout()
+        side_col.setSpacing(10)
+        side_col.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+
+        self._video_status_badge = QLabel()
+        self._video_status_badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._video_status_badge.setMinimumWidth(104)
+        side_col.addWidget(self._video_status_badge, 0, Qt.AlignmentFlag.AlignRight)
+
+        actions = QHBoxLayout()
+        actions.setSpacing(10)
+
+        pill_button = f"""
+            QPushButton {{
+                background: rgba(255,255,255,0.08);
+                color: {_TEXT_PRIMARY};
+                border: 1px solid rgba(255,255,255,0.08);
+                border-radius: 14px;
+                padding: 10px 14px;
+                font-size: 12px;
+                font-weight: 600;
+            }}
+            QPushButton:hover {{
+                background: rgba(255,255,255,0.14);
+                border: 1px solid rgba(255,255,255,0.16);
+            }}
+            QPushButton:disabled {{
+                color: rgba(241,245,249,0.35);
+                background: rgba(255,255,255,0.04);
+                border: 1px solid rgba(255,255,255,0.04);
+            }}
+        """
         
-        self._video_browser_btn = QPushButton("🌐 Tarayıcıda Aç")
+        # Back button
+        self._video_back_btn = QPushButton("Kapat")
+        self._video_back_btn.setStyleSheet(pill_button)
+        self._video_back_btn.clicked.connect(self._close_video)
+        actions.addWidget(self._video_back_btn)
+        
+        # Minimize button
+        self._video_minimize_btn = QPushButton("Küçült")
+        self._video_minimize_btn.setStyleSheet(pill_button)
+        self._video_minimize_btn.clicked.connect(self._minimize_video)
+        actions.addWidget(self._video_minimize_btn)
+        
+        self._video_browser_btn = QPushButton("Tarayıcıda İzle")
         self._video_browser_btn.setStyleSheet(f"""
             QPushButton {{
-                background: {_ACCENT};
+                background: qlineargradient(x1:0, x2:1,
+                    stop:0 {_GRADIENT_START}, stop:1 {_GRADIENT_END});
                 color: {_TEXT_PRIMARY};
                 border: none;
-                border-radius: 12px;
-                padding: 8px 16px;
-                font-size: 13px;
+                border-radius: 14px;
+                padding: 10px 16px;
+                font-size: 12px;
                 font-weight: 600;
             }}
             QPushButton:hover {{
                 background: {_ACCENT_LIGHT};
             }}
+            QPushButton:disabled {{
+                color: rgba(241,245,249,0.35);
+                background: rgba(255,255,255,0.08);
+            }}
         """)
         self._video_browser_btn.clicked.connect(self._open_video_in_browser)
-        header_layout.addWidget(self._video_browser_btn)
+        self._video_browser_btn.setEnabled(False)
+        actions.addWidget(self._video_browser_btn)
+
+        side_col.addLayout(actions)
+        header_layout.addLayout(side_col)
         
         layout.addWidget(header)
+
+        self._video_stage = QFrame()
+        self._video_stage.setObjectName("videoStage")
+        self._video_stage.setStyleSheet(f"""
+            QFrame#videoStage {{
+                background: qlineargradient(
+                    x1:0, y1:0, x2:1, y2:1,
+                    stop:0 rgba(6, 8, 14, 0.98),
+                    stop:1 rgba(18, 18, 28, 0.98)
+                );
+                border: 1px solid rgba(139, 92, 246, 0.20);
+                border-radius: 24px;
+            }}
+        """)
+        stage_layout = QVBoxLayout(self._video_stage)
+        stage_layout.setContentsMargins(10, 10, 10, 10)
+        stage_layout.setSpacing(0)
+        self._video_widget.setMinimumHeight(320)
+        self._video_widget.setStyleSheet("background: #05070C; border-radius: 18px;")
+        stage_layout.addWidget(self._video_widget, 1)
         
-        # Video widget
-        layout.addWidget(self._video_widget, 1)
+        layout.addWidget(self._video_stage, 1)
         
         # Video control bar (frosted glass)
         control_bar = QFrame()
-        control_bar.setFixedHeight(70)
+        control_bar.setObjectName("videoControls")
         control_bar.setStyleSheet(f"""
-            QFrame {{
-                background: {_GLASS_BG};
-                border-top: 1px solid {_GLASS_BORDER};
+            QFrame#videoControls {{
+                background: rgba(18, 20, 32, 0.94);
+                border: 1px solid rgba(139, 92, 246, 0.18);
+                border-radius: 20px;
             }}
         """)
         control_layout = QVBoxLayout(control_bar)
-        control_layout.setContentsMargins(16, 8, 16, 8)
-        control_layout.setSpacing(8)
+        control_layout.setContentsMargins(18, 14, 18, 14)
+        control_layout.setSpacing(10)
         
         # Seek bar
         self._vid_progress = QSlider(Qt.Orientation.Horizontal)
@@ -1234,8 +1306,38 @@ class MusicFullPage(QWidget):
         self._video_player.positionChanged.connect(self._vid_on_position_changed)
         self._video_player.durationChanged.connect(self._vid_on_duration_changed)
         self._video_player.playbackStateChanged.connect(self._on_video_state_changed)
+
+        self._set_video_panel_state(
+            "BEKLEMEDE",
+            "Bir video acildiginda oynatma kontrolleri ve kalite bilgisi burada guncellenir.",
+            "idle",
+        )
         
         return container
+
+    def _set_video_panel_state(self, status: str, detail: str, tone: str = "idle") -> None:
+        """Video panelinin durum rozetini ve alt bilgisini guncelle."""
+        palette = {
+            "idle": ("rgba(148,163,184,0.16)", "rgba(148,163,184,0.22)", "#CBD5E1"),
+            "loading": ("rgba(245,158,11,0.16)", "rgba(245,158,11,0.30)", "#FCD34D"),
+            "live": ("rgba(16,185,129,0.16)", "rgba(16,185,129,0.28)", "#6EE7B7"),
+            "error": ("rgba(244,63,94,0.16)", "rgba(244,63,94,0.28)", "#FDA4AF"),
+        }
+        bg, border, color = palette.get(tone, palette["idle"])
+        self._video_status_badge.setText(status)
+        self._video_status_badge.setStyleSheet(f"""
+            QLabel {{
+                background: {bg};
+                color: {color};
+                border: 1px solid {border};
+                border-radius: 12px;
+                padding: 6px 12px;
+                font-size: 11px;
+                font-weight: 700;
+                letter-spacing: 0.8px;
+            }}
+        """)
+        self._video_meta_label.setText(detail)
         
     def _create_nav_icon_button(self, icon: str) -> QPushButton:
         """Icon-only circular button."""
@@ -1518,8 +1620,25 @@ class MusicFullPage(QWidget):
         self._library_layout.insertWidget(self._library_layout.count() - 1, card)
         
     def _refresh_playlists(self):
-        """Playlist yenile (placeholder)."""
-        pass
+        """Playlist yenile (playlists.json'dan yükle)."""
+        import json
+        playlists_path = os.path.join(config.BASE_DIR, "music", "playlists.json")
+        try:
+            if not os.path.isfile(playlists_path):
+                return
+            with open(playlists_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            if isinstance(data, dict):
+                names = list(data.keys())
+            elif isinstance(data, list):
+                names = [p.get('name', str(i)) for i, p in enumerate(data) if isinstance(p, dict)]
+            else:
+                return
+            self._playlists = names
+            for name in names:
+                self._add_playlist_item(name)
+        except Exception as e:
+            logger.warning(f"Playlist yüklenemedi: {e}")
         
     def _add_playlist_item(self, name: str):
         """Playlist öğesi ekle."""
@@ -1546,13 +1665,18 @@ class MusicFullPage(QWidget):
     #  PLAYBACK
     # ─────────────────────────────────────────────────────────────
     def _play_lib_track(self, filename: str):
-        """Kütüphaneden dosya oynat (BUG FIX: config.MUSIC_DIR)."""
-        import os
-        # BUG FIX: config.MUSIC_DIR kullan
+        """Kütüphaneden dosya oynat."""
         path = os.path.join(config.MUSIC_DIR, filename)
         if not os.path.isfile(path):
             logger.error(f"Dosya bulunamadı: {path}")
             return
+        # Prev/next navigasyonu için liste ve indeksi güncelle
+        if not self._current_playlist or filename not in self._current_playlist:
+            self._current_playlist = list(self._library_tracks)
+        try:
+            self._current_idx = self._current_playlist.index(filename)
+        except ValueError:
+            self._current_idx = 0
         self._video_player.stop()
         self._video_player.setSource(QUrl.fromLocalFile(path))
         self._current_title = filename
@@ -1584,8 +1708,34 @@ class MusicFullPage(QWidget):
         self._start_glow_pulse()
         
     def _play_playlist(self, name: str):
-        """Playlist oynat (placeholder)."""
-        pass
+        """Playlist oynat."""
+        import json
+        playlists_path = os.path.join(config.BASE_DIR, "music", "playlists.json")
+        try:
+            if not os.path.isfile(playlists_path):
+                logger.warning(f"Playlist dosyası bulunamadı: {playlists_path}")
+                return
+            with open(playlists_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            tracks: list = []
+            if isinstance(data, dict) and name in data:
+                raw = data[name]
+                tracks = raw if isinstance(raw, list) else []
+            elif isinstance(data, list):
+                for p in data:
+                    if isinstance(p, dict) and p.get('name') == name:
+                        tracks = p.get('tracks', [])
+                        break
+            filenames = [t if isinstance(t, str) else t.get('filename', '') for t in tracks]
+            filenames = [f for f in filenames if f]
+            if not filenames:
+                logger.warning(f"Playlist boş veya bulunamadı: {name}")
+                return
+            self._current_playlist = filenames
+            self._current_idx = 0
+            self._play_lib_track(filenames[0])
+        except Exception as e:
+            logger.warning(f"Playlist oynatma hatası: {e}")
         
     def _toggle_play(self):
         """Oynat/duraklat."""
@@ -1610,16 +1760,17 @@ class MusicFullPage(QWidget):
             self._video_player.play()
             
     def _on_prev(self):
-        """Önceki parça (playlist varsa)."""
+        """Önceki parça."""
         if self._current_idx > 0:
             self._current_idx -= 1
-            # TODO: play track
-            
+            if self._current_playlist:
+                self._play_lib_track(self._current_playlist[self._current_idx])
+
     def _on_next(self):
-        """Sonraki parça (playlist varsa)."""
+        """Sonraki parça."""
         if self._current_idx < len(self._current_playlist) - 1:
             self._current_idx += 1
-            # TODO: play track
+            self._play_lib_track(self._current_playlist[self._current_idx])
             
     def _on_vol_changed(self, value: int):
         """Ses seviyesi değişti."""
@@ -1637,6 +1788,16 @@ class MusicFullPage(QWidget):
         if self._stream_worker:
             self._stream_worker.quit()
             self._stream_worker.wait()
+        self._pending_video_url = url
+        self._current_url = url
+        self._video_container.show()
+        self._video_title_label.setText("Video hazirlaniyor...")
+        self._video_browser_btn.setEnabled(True)
+        self._set_video_panel_state(
+            "HAZIRLANIYOR",
+            "Kaynak adresi cozuluyor. Akis hazir oldugunda oynatma otomatik baslayacak.",
+            "loading",
+        )
         self._stream_worker = _StreamWorker(url, is_video=True)
         self._stream_worker.stream_ready.connect(self._on_video_stream_ready)
         self._stream_worker.stream_error.connect(self._on_video_stream_error)
@@ -1647,9 +1808,14 @@ class MusicFullPage(QWidget):
         self._video_player.stop()
         self._video_player.setSource(QUrl(url))
         self._current_title = title
-        self._current_url = url
+        self._current_url = self._pending_video_url or url
         self._is_video_mode = True
         self._video_title_label.setText(title)
+        self._set_video_panel_state(
+            "CANLI",
+            f"{fmt} hazir. Isterseniz videoyu tarayicida orijinal sayfasinda da acabilirsiniz.",
+            "live",
+        )
         
         # Video container'ı göster (QSplitter üzerinde)
         self._video_container.show()
@@ -1657,10 +1823,19 @@ class MusicFullPage(QWidget):
         self._video_player.play()
         self._update_now_playing()
         self._start_glow_pulse()
+        self._pending_video_url = ""
         
     def _on_video_stream_error(self, error: str):
         """Video stream hatası."""
         logger.error(f"Video stream hatası: {error}")
+        self._video_container.show()
+        self._video_title_label.setText("Video acilamadi")
+        self._set_video_panel_state(
+            "HATA",
+            f"Akis acilamadi: {error[:140]}",
+            "error",
+        )
+        self._video_browser_btn.setEnabled(bool(self._current_url))
         
     def _on_video_state_changed(self, state):
         """Video oynatma durumu değişti."""
@@ -1723,17 +1898,26 @@ class MusicFullPage(QWidget):
             self._fullscreen_window.close()
             self._fullscreen_window = None
             # Video widget'ı tekrar container'a ekle
-            self._video_container.layout().addWidget(self._video_widget)
+            self._video_stage.layout().addWidget(self._video_widget)
             
     def _close_video(self):
         """Video'yu kapat (container'ı gizle)."""
         self._video_player.stop()
         self._video_container.hide()
         self._is_video_mode = False
+        self._pending_video_url = ""
+        self._current_url = ""
+        self._video_browser_btn.setEnabled(False)
+        self._video_title_label.setText("Video salonu hazır")
+        self._set_video_panel_state(
+            "BEKLEMEDE",
+            "Bir video acildiginda oynatma kontrolleri ve kalite bilgisi burada guncellenir.",
+            "idle",
+        )
         
     def _open_video_in_browser(self):
         """Video'yu tarayıcıda aç."""
-        if self._current_url and self._browser:
+        if self._current_url and self._current_url.startswith(("http://", "https://")) and self._browser:
             self.open_in_browser.emit(self._current_url)
             
     # ─────────────────────────────────────────────────────────────
