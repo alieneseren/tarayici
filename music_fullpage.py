@@ -1,9 +1,9 @@
 """
-Visionary Navigator — Tam Sayfa Müzik Sayfası [PREMIUM DARK ELEGANT]
-Sofistike koyu tema, glassmorphism, violet-rose gradient vurguları.
+Visionary Navigator — Tam Sayfa Müzik Sayfası
+Profesyonel koyu tema, minimal tasarm, sade mavi vurgu rengi.
 YouTube'dan arama, indirme, streaming, gömülü video izleme.
 Video ve arama sonuçları birlikte görünebilir (QSplitter).
-Soft waveform visualizer, ambiance pulse effects.
+Soft waveform visualizer.
 Tüm UI metinleri ve yorumlar Türkçe'dir.
 """
 
@@ -31,34 +31,34 @@ logger.setLevel(logging.INFO)
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 #  PREMIUM DARK ELEGANT RENK PALETİ
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-_BG = "#0F0F14"                    # Koyu lacivert-siyah
-_BG_SECONDARY = "#161621"          # İkincil arkaplan
-_SURFACE = "#1C1C2E"               # Panel yüzeyi
-_SURFACE2 = "#232338"              # Hover yüzeyi
-_SURFACE3 = "#2A2A42"              # Kart yüzeyi
-_ACCENT = "#8B5CF6"                # Mor vurgu (Violet)
-_ACCENT_LIGHT = "#A78BFA"          # Açık mor
-_ACCENT_WARM = "#F59E0B"           # Amber/altın vurgu
-_ACCENT_ROSE = "#EC4899"           # Rose/pembe vurgu
-_TEXT_PRIMARY = "#F1F5F9"          # Beyaz-mavi
-_TEXT_SECONDARY = "#94A3B8"        # Gri-mavi
-_TEXT_TERTIARY = "#64748B"         # Koyu gri-mavi
-_GLASS_BG = "rgba(28,28,46,0.92)"  # Cam arkaplan
-_GLASS_BORDER = "rgba(139,92,246,0.2)"  # Mor cam border
-_CARD_BG = "rgba(35,35,56,0.6)"
-_CARD_HOVER = "rgba(139,92,246,0.08)"
-_GRADIENT_START = "#8B5CF6"        # Gradient başlangıç
-_GRADIENT_END = "#EC4899"          # Gradient bitiş
+_BG = "#111111"                    # Derin siyah
+_BG_SECONDARY = "#181818"          # İkincil arkaplan
+_SURFACE = "#1F1F1F"               # Panel yüzeyi
+_SURFACE2 = "#272727"              # Hover yüzeyi
+_SURFACE3 = "#303030"              # Kart yüzeyi
+_ACCENT = "#4B8EF5"                # Profesyonel mavi
+_ACCENT_LIGHT = "#74AAF8"          # Açık mavi
+_ACCENT_WARM = "#D4884A"           # Muted amber (indirme)
+_ACCENT_ROSE = "#D95E5E"           # Muted kırmızı (izle)
+_TEXT_PRIMARY = "#EBEBEB"          # Neredeyse beyaz
+_TEXT_SECONDARY = "#888888"        # Gri
+_TEXT_TERTIARY = "#555555"         # Koyu gri
+_GLASS_BG = "rgba(31,31,31,0.97)"  # Koyu panel
+_GLASS_BORDER = "rgba(255,255,255,0.07)"  # Çok hafif border
+_CARD_BG = "rgba(39,39,39,0.7)"
+_CARD_HOVER = "rgba(75,142,245,0.06)"
+_GRADIENT_START = "#4B8EF5"        # Accent ile aynı (düz görünüm)
+_GRADIENT_END = "#4B8EF5"          # Accent ile aynı (düz görünüm)
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-#  SOFT WAVE WIDGET — Yumuşak dalga görselleştiricisi (Violet-Rose)
+#  SOFT WAVE WIDGET — Yumuşak dalga görselleştiricisi
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 class _SoftWaveWidget(QWidget):
     """
     Minimalist yumuşak dalga görselleştiricisi.
     Müzik çalarken daha büyük, durduğunda gentle idle animasyon.
-    4 katmanlı translucent sine dalgaları - violet/rose gradyan renkleri.
+    4 katmanlı translucent sine dalgaları - mavi-gri renk şeması.
     """
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -98,12 +98,12 @@ class _SoftWaveWidget(QWidget):
         width = self.width()
         height = self.height()
         
-        # Violet-rose gradyan renk şeması
+        # Profesyonel mavi-gri renk şeması
         colors = [
-            QColor(139, 92, 246, 40),   # Violet
-            QColor(167, 139, 250, 50),  # Light violet
-            QColor(236, 72, 153, 45),   # Rose
-            QColor(139, 92, 246, 35)    # Violet
+            QColor(75, 142, 245, 32),   # Muted blue
+            QColor(100, 160, 248, 40),  # Light blue
+            QColor(75, 142, 245, 25),   # Muted blue (derin)
+            QColor(130, 175, 240, 30)   # Pale blue
         ]
         
         for idx in range(self._num_waves):
@@ -132,12 +132,12 @@ class _SoftWaveWidget(QWidget):
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-#  AMBIANCE PULSE OVERLAY — Radyal gradyan pulse efekti (violet-rose)
+#  AMBIANCE PULSE OVERLAY — Radyal gradyan pulse efekti
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 class _AmbiancePulseOverlay(QWidget):
     """
     Radyal gradient ile subtle pulse efekti (şarkı değişiminde).
-    Violet-rose renkler.
+    Hafif mavi ton.
     """
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -167,8 +167,8 @@ class _AmbiancePulseOverlay(QWidget):
         radius = int(max(w, h) * 0.6)
         
         gradient = QRadialGradient(center_x, center_y, radius)
-        gradient.setColorAt(0.0, QColor(139, 92, 246, int(self._opacity * 100)))
-        gradient.setColorAt(0.5, QColor(236, 72, 153, int(self._opacity * 50)))
+        gradient.setColorAt(0.0, QColor(75, 142, 245, int(self._opacity * 50)))
+        gradient.setColorAt(0.5, QColor(75, 142, 245, int(self._opacity * 20)))
         gradient.setColorAt(1.0, QColor(0, 0, 0, 0))
         
         painter.setBrush(QBrush(gradient))
@@ -181,7 +181,7 @@ class _AmbiancePulseOverlay(QWidget):
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 class _AestheticButton(QPushButton):
     """
-    Hover'da violet glow efekti olan estetik buton.
+    Hover'da mavi glow efekti olan estetik buton.
     """
     def __init__(self, text: str, parent=None):
         super().__init__(text, parent)
@@ -208,20 +208,20 @@ class _AestheticButton(QPushButton):
     def _ensure_glow(self):
         if self._glow_effect is None:
             self._glow_effect = QGraphicsDropShadowEffect()
-            self._glow_effect.setColor(QColor(139, 92, 246, 0))
-            self._glow_effect.setBlurRadius(20)
+            self._glow_effect.setColor(QColor(75, 142, 245, 0))
+            self._glow_effect.setBlurRadius(16)
             self._glow_effect.setOffset(0, 0)
             self.setGraphicsEffect(self._glow_effect)
             
     def enterEvent(self, event):
         self._ensure_glow()
         if self._glow_effect:
-            self._glow_effect.setColor(QColor(139, 92, 246, 150))
+            self._glow_effect.setColor(QColor(75, 142, 245, 90))
         super().enterEvent(event)
         
     def leaveEvent(self, event):
         if self._glow_effect:
-            self._glow_effect.setColor(QColor(139, 92, 246, 0))
+            self._glow_effect.setColor(QColor(75, 142, 245, 0))
         super().leaveEvent(event)
 
 
@@ -1003,14 +1003,9 @@ class MusicFullPage(QWidget):
         header.setObjectName("videoHero")
         header.setStyleSheet(f"""
             QFrame#videoHero {{
-                background: qlineargradient(
-                    x1:0, y1:0, x2:1, y2:1,
-                    stop:0 rgba(24, 24, 38, 0.96),
-                    stop:0.6 rgba(52, 28, 86, 0.90),
-                    stop:1 rgba(104, 34, 92, 0.88)
-                );
-                border: 1px solid rgba(236, 72, 153, 0.18);
-                border-radius: 22px;
+                background: {_SURFACE};
+                border: 1px solid {_GLASS_BORDER};
+                border-radius: 14px;
             }}
         """)
         header_layout = QHBoxLayout(header)
@@ -1132,13 +1127,9 @@ class MusicFullPage(QWidget):
         self._video_stage.setObjectName("videoStage")
         self._video_stage.setStyleSheet(f"""
             QFrame#videoStage {{
-                background: qlineargradient(
-                    x1:0, y1:0, x2:1, y2:1,
-                    stop:0 rgba(6, 8, 14, 0.98),
-                    stop:1 rgba(18, 18, 28, 0.98)
-                );
-                border: 1px solid rgba(139, 92, 246, 0.20);
-                border-radius: 24px;
+                background: #0A0A0A;
+                border: 1px solid {_GLASS_BORDER};
+                border-radius: 16px;
             }}
         """)
         stage_layout = QVBoxLayout(self._video_stage)
@@ -1155,9 +1146,9 @@ class MusicFullPage(QWidget):
         control_bar.setObjectName("videoControls")
         control_bar.setStyleSheet(f"""
             QFrame#videoControls {{
-                background: rgba(18, 20, 32, 0.94);
-                border: 1px solid rgba(139, 92, 246, 0.18);
-                border-radius: 20px;
+                background: {_GLASS_BG};
+                border: 1px solid {_GLASS_BORDER};
+                border-radius: 14px;
             }}
         """)
         control_layout = QVBoxLayout(control_bar)
