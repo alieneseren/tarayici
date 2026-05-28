@@ -681,21 +681,7 @@ class VisionaryBrowser(QMainWindow):
         self._new_tab_btn.setObjectName("newTabBtn")
         self._new_tab_btn.setFixedSize(28, 28)
         self._new_tab_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        self._new_tab_btn.setStyleSheet("""
-            QPushButton {
-                background: rgba(108, 99, 255, 0.12);
-                color: #A79BFF;
-                border: 1px solid rgba(108, 99, 255, 0.25);
-                border-radius: 8px;
-                font-size: 18px;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background: rgba(108, 99, 255, 0.25);
-                border-color: rgba(108, 99, 255, 0.5);
-                color: #FFFFFF;
-            }
-        """)
+        # Stil theme.qss → QPushButton#newTabBtn tarafından yönetilir
         self._new_tab_btn.clicked.connect(lambda: self.add_new_tab())
 
         browser_layout.addWidget(self._tab_widget)
@@ -755,13 +741,13 @@ class VisionaryBrowser(QMainWindow):
         self._music_fab.setStyleSheet("""
             QPushButton {
                 background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
-                    stop:0 #6C63FF, stop:1 #4B4BFF);
+                    stop:0 #007AFF, stop:1 #005FCC);
                 border: none; border-radius: 26px;
                 font-size: 22px; color: #FFFFFF;
             }
             QPushButton:hover {
                 background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
-                    stop:0 #7F77FF, stop:1 #5C5CFF);
+                    stop:0 #3395FF, stop:1 #1A7AEA);
             }
         """)
         shadow_fab = QGraphicsDropShadowEffect()
@@ -2390,17 +2376,17 @@ class VisionaryBrowser(QMainWindow):
         features_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         features_btn.setStyleSheet("""
             QPushButton {
-                background: rgba(108, 99, 255, 0.15);
-                color: #A79BFF;
-                border: 1px solid rgba(108, 99, 255, 0.25);
+                background: rgba(0, 122, 255, 0.10);
+                color: #007AFF;
+                border: 1px solid rgba(0, 122, 255, 0.22);
                 border-radius: 8px;
                 font-weight: 700; font-size: 11px;
                 letter-spacing: 0.4px; padding: 0 10px;
             }
             QPushButton:hover {
-                background: rgba(108, 99, 255, 0.28);
-                color: #FFFFFF;
-                border-color: rgba(108, 99, 255, 0.55);
+                background: rgba(0, 122, 255, 0.18);
+                color: #0062CC;
+                border-color: rgba(0, 122, 255, 0.40);
             }
             QPushButton::menu-indicator { image: none; width: 0; }
         """)
@@ -2408,22 +2394,22 @@ class VisionaryBrowser(QMainWindow):
         features_menu = QMenu(features_btn)
         features_menu.setStyleSheet("""
             QMenu {
-                background: #2C2C2E;
-                border: 1px solid rgba(255,255,255,0.10);
+                background: #FFFFFF;
+                border: 1px solid rgba(0,0,0,0.12);
                 border-radius: 12px; padding: 6px 4px;
-                color: #EBEBF5; font-size: 13px;
+                color: #1C1C1E; font-size: 13px;
             }
             QMenu::item {
                 padding: 9px 18px 9px 14px;
                 border-radius: 7px; margin: 1px 4px;
             }
             QMenu::item:selected {
-                background: rgba(108,99,255,0.18);
-                color: #FFFFFF;
+                background: rgba(0, 122, 255, 0.10);
+                color: #007AFF;
             }
             QMenu::separator {
                 height: 1px; margin: 4px 10px;
-                background: rgba(255,255,255,0.07);
+                background: rgba(0,0,0,0.07);
             }
         """)
         features_menu.addAction("🧠  AI Sohbet", self._open_ai_fullscreen)
@@ -2444,21 +2430,21 @@ class VisionaryBrowser(QMainWindow):
         quick_btn_style = """
             QPushButton {
                 background: transparent;
-                color: #8E8EA0;
+                color: rgba(60, 60, 67, 0.55);
                 border: none;
                 border-radius: 7px;
                 font-size: 15px;
             }
             QPushButton:hover {
-                background: rgba(255, 255, 255, 0.08);
-                color: #EBEBF5;
+                background: rgba(0, 0, 0, 0.07);
+                color: #1C1C1E;
             }
             QPushButton:pressed {
-                background: rgba(255, 255, 255, 0.13);
+                background: rgba(0, 0, 0, 0.12);
             }
             QPushButton:checked {
-                background: rgba(10, 132, 255, 0.20);
-                color: #0A84FF;
+                background: rgba(0, 122, 255, 0.12);
+                color: #007AFF;
             }
         """
 

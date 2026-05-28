@@ -12,6 +12,8 @@ Güvenlik Özellikleri:
 
 from __future__ import annotations
 import os
+import shutil
+import tempfile
 import logging
 import uuid
 from typing import Optional, Dict, List
@@ -106,8 +108,18 @@ class GhostProfile(QWebEngineProfile):
             proxy_port: SOCKS5 proxy portu (opsiyonel)
             parent: Parent QObject
         """
-        # Off-the-record profil (diske hiçbir şey yazmaz)
-        super().__init__(parent)
+        # ── Named profile + geçici dizin ─────────────────────────────────
+        # Unnamed/off-the-record profil bazı Qt build'lerinde MSE codec
+        # pipeline'ını tam olarak başlatamaz; bu durum video.js 102630
+        # (MEDIA_ERR_SRC_NOT_SUPPORTED) hatasına neden olur.
+        # Named profile, default profile ile aynı codec desteğine sahiptir.
+        # Gizliliği korumak için:
+        #  - geçici dizin (uygulamayı kapatınca siliniyor)
+        #  - NoPersistentCookies → oturum cookie'leri RAM'de kalır
+        #  - MemoryHttpCache → video buffer RAM'de, diske yazılmıyor
+        self._temp_dir = tempfile.mkdtemp(prefix=f'vn_ghost_{profile_id}_')
+        super().__init__(f"ghost_{profile_id}", parent)       # Named — off-the-record değil
+        self.setPersistentStoragePath(self._temp_dir)
         
         self._profile_id = profile_id
         self._proxy_port = proxy_port
@@ -228,8 +240,8 @@ class GhostProfile(QWebEngineProfile):
         
     def destroy(self):
         """
-        Profili tamamen yok et.
-        RAM'de iz bırakmamak için tüm verileri temizle.
+        Profili tamamen yok et ve geçici dizini sil.
+        Disk'te hiçbir iz bırakılmaz.
         """
         try:
             # Ziyaret edilen linkleri temizle
@@ -237,6 +249,11 @@ class GhostProfile(QWebEngineProfile):
             
             # HTTP önbelleğini temizle
             self.clearHttpCache()
+            
+            # Geçici depolama dizinini sil (cookie, IndexedDB vs.)
+            if hasattr(self, '_temp_dir') and os.path.exists(self._temp_dir):
+                shutil.rmtree(self._temp_dir, ignore_errors=True)
+                logger.debug(f"[Ghost] Geçici dizin silindi: {self._temp_dir}")
             
             logger.info(f"[Ghost] Profil yok edildi: {self._profile_id}")
             

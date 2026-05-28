@@ -105,7 +105,11 @@ def main():
     base_flags = (
         "--disable-gpu-compositing "
         "--use-gl=angle "
-        "--disable-features=SkiaGraphite "
+        # SameSiteByDefaultCookies/CookiesWithoutSameSiteMustBeSecure kaldırılırsa
+        # CDN'ler cross-origin auth cookie'si gönderemez → video.js Error 102630.
+        "--disable-features=SkiaGraphite,"
+        "SameSiteByDefaultCookies,"
+        "CookiesWithoutSameSiteMustBeSecure "
         "--autoplay-policy=no-user-gesture-required"
     )
     
