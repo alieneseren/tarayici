@@ -127,34 +127,33 @@ BLOCKED_DOMAINS: Set[str] = {
 }
 
 # Engellenecek URL pattern'leri
+# NOT: Kısa/genel pattern'ler ('ad', 'banner', 'stat') yerine CDN/yol
+# düzeyinde kesin örüntüler kullanılır — e-ticaret siteleri
+# (hepsiburada, trendyol vb.) bu kısa kelimeleri meşru kaynaklarda kullanır.
 BLOCKED_URL_PATTERNS: List[str] = [
-    r"/ads/",
     r"/adserver/",
-    r"/advert",
-    r"/banner",
-    r"/tracking",
-    r"/analytics",
-    r"/pixel",
-    r"/beacon",
-    r"\.gif\?.*track",
-    r"\.png\?.*ad",
-    r"/collect\?",
-    r"/log\?",
-    r"/stats\?",
-    r"/_track",
+    r"/adservice/",
     r"/pagead/",
-    r"/ad_",
-    r"_ad\.",
-    r"/sponsored",
-    r"/promo",
-    r"/popup",
-    r"/interstitial",
+    r"/adsystem/",
+    r"/advert(?:isement|ising)?/",
+    r"/doubleclick/",
+    r"/tracking[-_]pixel",
+    r"/analytics[-_]collect",
+    r"/beacon\?.*track",
+    r"\.gif\?.*track=",
+    r"/collect\?.*cid=",
+    r"/_track\?",
+    r"/interstitial[-_]ad",
+    r"/sponsored[-_]content",
+    r"/promo[-_]popup",
 ]
 
 # Engellenecek kaynak türleri (iframe, script vb.)
+# NOT: ResourceTypeImage BURAYA EKLENMEMELİ — ürün CDN resimleri de
+# keyword eşleşmesiyle engellenebiliyor (ör. 'hepsiburada' içinde 'ad' geçiyor).
+# Resimler yalnızca BLOCKED_DOMAINS listesiyle kontrol edilir.
 BLOCKED_RESOURCE_TYPES = {
     QWebEngineUrlRequestInfo.ResourceType.ResourceTypeScript,
-    QWebEngineUrlRequestInfo.ResourceType.ResourceTypeImage,
     QWebEngineUrlRequestInfo.ResourceType.ResourceTypeSubFrame,
     QWebEngineUrlRequestInfo.ResourceType.ResourceTypePing,
     QWebEngineUrlRequestInfo.ResourceType.ResourceTypePluginResource,
@@ -247,12 +246,22 @@ class AdBlockerInterceptor(QWebEngineUrlRequestInterceptor):
         return False
         
     def _looks_like_ad(self, url: str, host: str) -> bool:
-        """URL reklam gibi görünüyor mu?"""
-        ad_keywords = ['ad', 'ads', 'advert', 'banner', 'sponsor', 'promo', 
-                       'track', 'pixel', 'beacon', 'analytics', 'stat']
+        """URL reklam gibi görünüyor mu?
+        
+        NOT: 'ad', 'stat' gibi kısa alt-dizi eşleşmesi kullanılmaz;
+        'hepsiburada', 'static', 'download' gibi meşru URL'ler yanlışlıkla
+        engellenir. Bunun yerine yol/segment düzeyinde kesin örüntüler kullanılır.
+        """
+        # Tam segment veya parametre düzeyinde eşleşme — yanlış pozitif riski düşük
+        ad_segments = [
+            '/advert', '/adsystem', '/adserver', '/adservice',
+            '/banner-ad', '/sponsored-', '/promo-click',
+            '/tracking-pixel', '/beacon/', '/analytics-collect',
+            '/pagead/', '/doubleclick',
+        ]
         url_lower = url.lower()
-        for kw in ad_keywords:
-            if kw in url_lower:
+        for seg in ad_segments:
+            if seg in url_lower:
                 return True
         return False
         
@@ -594,30 +603,21 @@ def apply_tor_proxy_to_profile(profile, tor_manager: TorManager):
 
 
 def remove_proxy():
-    """Proxy'yi kaldır ve kayıtlı bypass listesini temizle."""
+    """Proxy'yi kaldır."""
     from PyQt6.QtNetwork import QNetworkProxy
     QNetworkProxy.setApplicationProxy(QNetworkProxy(QNetworkProxy.ProxyType.NoProxy))
     _save_tor_state(False)
-    logger.info("Proxy kaldırıldı, bypass listesi temizlendi.")
+    logger.info("Proxy kaldırıldı.")
 
 
 def _save_tor_state(enabled: bool):
-    """Tor durumunu kaydet. Kapatılırken bypass listesi de temizlenir."""
+    """Tor durumunu kaydet."""
     import json
     import config
     state_file = os.path.join(config.BASE_DIR, ".tor_state")
     try:
-        # Mevcut bypass listesini koru — sadece Tor KAPANIRKEN temizle
-        state: dict = {"enabled": enabled, "bypass_domains": []}
-        if enabled and os.path.exists(state_file):
-            try:
-                with open(state_file, "r") as f:
-                    prev = json.load(f)
-                state["bypass_domains"] = prev.get("bypass_domains", [])
-            except Exception:
-                pass
-        with open(state_file, "w") as f:
-            json.dump(state, f)
+        with open(state_file, 'w') as f:
+            json.dump({"enabled": enabled}, f)
     except Exception as e:
         logger.warning(f"Tor durumu kaydedilemedi: {e}")
 
@@ -637,89 +637,8 @@ def is_tor_mode_enabled() -> bool:
     return False
 
 
-# Platform → bypass edilecek domain listesi haritası.
-# Kullanıcı 'Bu videoyu Tor'suz aç' dediğinde URL'ye göre uygun set seçilir.
-_VIDEO_PLATFORM_BYPASS: dict = {
-    "youtube.com":     ["*.youtube.com", "*.googlevideo.com", "*.ytimg.com", "*.ggpht.com"],
-    "youtu.be":        ["*.youtube.com", "*.googlevideo.com", "*.ytimg.com"],
-    "twitch.tv":       ["*.twitch.tv", "*.jtvnw.net", "*.twitchsvc.net", "*.twitchdns.net"],
-    "netflix.com":     ["*.netflix.com", "*.nflxvideo.net", "*.nflxext.com"],
-    "vimeo.com":       ["*.vimeo.com", "*.vimeocdn.com"],
-    "dailymotion.com": ["*.dailymotion.com", "*.dmcdn.net"],
-    "twitter.com":     ["*.twitter.com", "*.twimg.com"],
-    "x.com":           ["*.x.com", "*.twimg.com"],
-    "instagram.com":   ["*.instagram.com", "*.cdninstagram.com", "*.fbcdn.net"],
-    "facebook.com":    ["*.facebook.com", "*.fbcdn.net", "*.fb.com"],
-    "tiktok.com":      ["*.tiktok.com", "*.tiktokcdn.com", "*.tiktokv.com"],
-    "spotify.com":     ["*.spotify.com", "*.scdn.co", "*.spotifycdn.com"],
-    "primevideo.com":  ["*.primevideo.com", "*.cloudfront.net", "*.akamaized.net"],
-    "disneyplus.com":  ["*.disneyplus.com", "*.bamgrid.com", "*.dssott.com"],
-}
-
-
-def get_video_bypass_for_url(url: str) -> list:
-    """
-    URL'ye göre bypass edilmesi gereken domain listesini döndür.
-    Bilinen platformlar için hazır CDN seti; bilinmeyenler için sadece host.
-    """
-    from urllib.parse import urlparse
-    try:
-        host = (urlparse(url).hostname or "").lower().removeprefix("www.")
-        for platform, domains in _VIDEO_PLATFORM_BYPASS.items():
-            if platform in host:
-                return domains
-        # Bilinmeyen domain — host'u doğrudan bypass et
-        return [f"*.{host}", host] if host else []
-    except Exception:
-        return []
-
-
-def save_tor_bypass_domains(new_domains: list) -> None:
-    """Bypass domain listesini .tor_state dosyasına ekleyerek kaydet."""
-    import json
-    import config
-    state_file = os.path.join(config.BASE_DIR, ".tor_state")
-    try:
-        state = {"enabled": True, "bypass_domains": []}
-        if os.path.exists(state_file):
-            with open(state_file, "r") as f:
-                state = json.load(f)
-        existing = set(state.get("bypass_domains", []))
-        existing.update(new_domains)
-        state["bypass_domains"] = sorted(existing)
-        with open(state_file, "w") as f:
-            json.dump(state, f)
-        logger.info(f"Bypass domains kaydedildi: {new_domains}")
-    except Exception as e:
-        logger.warning(f"Bypass domains kaydedilemedi: {e}")
-
-
-def get_saved_bypass_domains() -> list:
-    """Kaydedilmiş bypass domain listesini döndür."""
-    import json
-    import config
-    state_file = os.path.join(config.BASE_DIR, ".tor_state")
-    try:
-        if os.path.exists(state_file):
-            with open(state_file, "r") as f:
-                return json.load(f).get("bypass_domains", [])
-    except Exception:
-        pass
-    return []
-
-
 def get_tor_chromium_flags() -> str:
-    """
-    Tor için Chromium başlatma bayraklarını döndür.
-
-    Proxy: socks5://127.0.0.1:9050 — tüm HTTP/HTTPS trafiği Tor'a yönlenir.
-    Bypass: yalnızca kullanıcının 'Bu Videoyu Tor'suz Aç' dediği
-    platformların CDN'leri eklenir; global medya bypass yoktur.
-    """
+    """Tor için Chromium flags döndür."""
     if is_tor_mode_enabled():
-        flags = "--proxy-server=socks5://127.0.0.1:9050"
-        saved = get_saved_bypass_domains()
-        if saved:
-            flags += f" --proxy-bypass-list={';'.join(saved)}"
-        return flags
+        return "--proxy-server=socks5://127.0.0.1:9050"
     return ""
