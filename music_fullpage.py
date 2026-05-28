@@ -18,7 +18,7 @@ from PyQt6.QtGui import QColor, QFont, QPainter, QPen, QLinearGradient, QBrush, 
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QFrame, QScrollArea, QLineEdit, QSizePolicy, QSlider,
-    QGraphicsDropShadowEffect, QSplitter, QComboBox
+    QGraphicsDropShadowEffect, QSplitter, QComboBox, QStackedWidget
 )
 from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput
 from PyQt6.QtMultimediaWidgets import QVideoWidget
@@ -522,251 +522,134 @@ class MusicFullPage(QWidget):
     # ─────────────────────────────────────────────────────────────
     #  UI SETUP
     # ─────────────────────────────────────────────────────────────
+    # ═══════════════════════════════════════════════════════════════
+    #  UI KURULUM  ─  3 sayfalı Visionary Music mimarisi
+    # ═══════════════════════════════════════════════════════════════
+
     def _setup_ui(self):
-        """Ana UI layout."""
+        """Ana UI layout — 3 sayfalı Visionary Music."""
         self.setStyleSheet(f"background: {_BG};")
-        
+
         main_layout = QHBoxLayout(self)
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(0)
-        
-        # Sidebar (280px)
+
+        # Sidebar (önce kur — _nav_btns listesini oluşturur)
         self._sidebar = self._build_sidebar()
         main_layout.addWidget(self._sidebar)
-        
-        # Right: Ana içerik
+
+        # Sağ: sayfa container + now playing bar
         right_widget = QWidget()
+        right_widget.setStyleSheet("background: transparent;")
         right_layout = QVBoxLayout(right_widget)
         right_layout.setContentsMargins(0, 0, 0, 0)
         right_layout.setSpacing(0)
-        
-        # Search header
-        self._search_header = self._build_search_header()
-        right_layout.addWidget(self._search_header)
-        
-        # Video + Sonuçlar splitter (dikey)
-        self._content_splitter = QSplitter(Qt.Orientation.Vertical)
-        self._content_splitter.setStyleSheet(f"""
-            QSplitter::handle {{
-                background: {_GLASS_BORDER};
-                height: 2px;
-            }}
-        """)
-        
-        # Üst: Video alanı (başta gizli)
-        self._video_container = self._build_video_page()
-        self._video_container.hide()
-        self._content_splitter.addWidget(self._video_container)
-        
-        # Alt: Arama sonuçları (her zaman görünür)
-        self._results_scroll = QScrollArea()
-        self._results_scroll.setWidgetResizable(True)
-        self._results_scroll.setStyleSheet(f"""
-            QScrollArea {{
-                border: none;
-                background: transparent;
-            }}
-            QScrollBar:vertical {{
-                background: transparent;
-                width: 8px;
-            }}
-            QScrollBar::handle:vertical {{
-                background: {_SURFACE3};
-                border-radius: 4px;
-            }}
-            QScrollBar::handle:vertical:hover {{
-                background: {_ACCENT};
-            }}
-            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
-                height: 0;
-            }}
-        """)
-        
-        self._results_widget = QWidget()
-        self._results_widget.setStyleSheet("background: transparent;")
-        self._results_layout = QVBoxLayout(self._results_widget)
-        self._results_layout.setContentsMargins(0, 0, 0, 20)
-        self._results_layout.setSpacing(0)
-        self._results_layout.addStretch()
-        self._results_scroll.setWidget(self._results_widget)
 
-        # Section header (bölüm başlığı + sütun başlıkları) + results scroll sarmalı
-        results_outer = QWidget()
-        results_outer.setStyleSheet("background: transparent;")
-        ro_layout = QVBoxLayout(results_outer)
-        ro_layout.setContentsMargins(0, 0, 0, 0)
-        ro_layout.setSpacing(0)
+        # QStackedWidget — 3 sayfa
+        self._pages = QStackedWidget()
+        self._pages.setStyleSheet("background: transparent;")
 
-        self._section_header = self._build_section_header()
-        ro_layout.addWidget(self._section_header)
-        ro_layout.addWidget(self._results_scroll, 1)
+        self._ana_sayfa_page = self._build_ana_sayfa_page()   # 0
+        self._pages.addWidget(self._ana_sayfa_page)
 
-        self._content_splitter.addWidget(results_outer)
-        
-        # Splitter oranları
-        self._content_splitter.setStretchFactor(0, 2)  # Video
-        self._content_splitter.setStretchFactor(1, 1)  # Results
-        
-        right_layout.addWidget(self._content_splitter, 1)
-        
-        # Now playing bar
+        self._kesfet_page = self._build_kesfet_page()          # 1
+        self._pages.addWidget(self._kesfet_page)
+
+        self._kutuphane_page = self._build_kutuphane_page()    # 2
+        self._pages.addWidget(self._kutuphane_page)
+
+        right_layout.addWidget(self._pages, 1)
+
+        # Now playing bar (her sayfada görünür)
         self._now_playing_bar = self._build_now_playing_bar()
         right_layout.addWidget(self._now_playing_bar)
-        
+
         main_layout.addWidget(right_widget, 1)
-        
+
         # Ambiance pulse overlay
         self._pulse_overlay = _AmbiancePulseOverlay(self)
         self._pulse_overlay.setGeometry(self.rect())
         self._pulse_overlay.lower()
-        
+
+        # Başlangıç sayfası: Keşfet (index 1)
+        self._nav_to_page(1, 1)
+
+    # ───────────────────────────────────────────────────────────────
+    #  SIDEBAR  —  navigasyon odaklı (library/playlist'ler Kütüphane'de)
+    # ───────────────────────────────────────────────────────────────
+
     def _build_sidebar(self) -> QWidget:
-        """Sidebar (280px genişlik) — Visionary Music tasarım sistemi."""
+        """Sidebar (280px) — Visionary Music nav sistemi."""
         sidebar = QFrame()
         sidebar.setFixedWidth(280)
         sidebar.setStyleSheet(f"""
             QFrame {{
-                background: rgba(18,18,18,0.7);
-                border-right: 1px solid rgba(255,255,255,0.1);
+                background: rgba(19,19,19,0.98);
+                border-right: 1px solid rgba(255,255,255,0.08);
             }}
         """)
-        
+
         layout = QVBoxLayout(sidebar)
-        layout.setContentsMargins(0, 24, 0, 24)
+        layout.setContentsMargins(0, 24, 0, 0)
         layout.setSpacing(0)
-        
-        # ── Logo alanı ──────────────────────────────────────────
-        logo_frame = QFrame()
-        logo_frame.setStyleSheet("background: transparent;")
-        logo_layout = QVBoxLayout(logo_frame)
-        logo_layout.setContentsMargins(24, 0, 24, 0)
-        logo_layout.setSpacing(2)
-        
-        logo_title = QLabel("Visionary")
-        logo_title.setStyleSheet(f"""
+
+        # ── Logo ───────────────────────────────────────────────
+        logo_w = QWidget()
+        logo_w.setStyleSheet("background: transparent;")
+        logo_row = QHBoxLayout(logo_w)
+        logo_row.setContentsMargins(20, 0, 20, 16)
+        logo_row.setSpacing(12)
+
+        logo_circle = QLabel("V")
+        logo_circle.setFixedSize(40, 40)
+        logo_circle.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        logo_circle.setStyleSheet(f"""
             QLabel {{
+                background: {_SURFACE2};
                 color: {_ACCENT};
-                font-size: 24px;
-                font-weight: 800;
-                letter-spacing: -0.5px;
-                background: transparent;
+                border-radius: 20px;
+                font-size: 16px;
+                font-weight: 900;
+                border: 1px solid rgba(0,255,65,0.35);
             }}
         """)
-        logo_layout.addWidget(logo_title)
-        
-        logo_sub = QLabel("MUSIC SYSTEM")
-        logo_sub.setStyleSheet(f"""
-            QLabel {{
-                color: {_TEXT_SECONDARY};
-                font-size: 10px;
-                font-weight: 700;
-                letter-spacing: 3px;
-                background: transparent;
-            }}
-        """)
-        logo_layout.addWidget(logo_sub)
-        layout.addWidget(logo_frame)
-        layout.addSpacing(24)
-        
-        # ── Nav menü ────────────────────────────────────────────
-        nav_items = [
-            ("🏠", "Keşfet", self._load_trends),
-            ("📚", "Kütüphane", self._refresh_library),
+        logo_row.addWidget(logo_circle)
+
+        txt_col = QVBoxLayout()
+        txt_col.setSpacing(1)
+        t1 = QLabel("Visionary")
+        t1.setStyleSheet(f"color: {_ACCENT}; font-size: 18px; font-weight: 800; background: transparent;")
+        t2 = QLabel("MUSIC SYSTEM")
+        t2.setStyleSheet(f"color: {_TEXT_TERTIARY}; font-size: 9px; font-weight: 700; letter-spacing: 2px; background: transparent;")
+        txt_col.addWidget(t1)
+        txt_col.addWidget(t2)
+        logo_row.addLayout(txt_col, 1)
+        layout.addWidget(logo_w)
+
+        # ── Nav butonları ──────────────────────────────────────
+        self._nav_btns: list = []
+        nav_data = [
+            ("🏠", "Ana Sayfa",   0),
+            ("🔍", "Keşfet",      1),
+            ("📚", "Kütüphane",   2),
+            ("♡",  "Beğenilenler",2),
         ]
-        
-        self._btn_kesfet = self._create_sidebar_nav_btn("🏠", "Keşfet", active=True)
-        self._btn_kesfet.clicked.connect(self._load_trends)
-        layout.addWidget(self._btn_kesfet)
-        
-        self._btn_library = self._create_sidebar_nav_btn("📚", "Kütüphane")
-        self._btn_library.clicked.connect(self._refresh_library)
-        layout.addWidget(self._btn_library)
-        
-        layout.addSpacing(20)
-        
-        # ── Kütüphane listesi başlığı ───────────────────────────
-        lib_header = QFrame()
-        lib_header.setStyleSheet("background: transparent;")
-        lib_h_layout = QHBoxLayout(lib_header)
-        lib_h_layout.setContentsMargins(24, 0, 16, 0)
-        lib_h_layout.setSpacing(0)
-        
-        lib_label = QLabel("KÜTÜPHANENİZ")
-        lib_label.setStyleSheet(f"""
-            QLabel {{
-                color: {_TEXT_TERTIARY};
-                font-size: 11px;
-                font-weight: 700;
-                letter-spacing: 1.5px;
-                background: transparent;
-            }}
-        """)
-        lib_h_layout.addWidget(lib_label)
-        lib_h_layout.addStretch()
-        layout.addWidget(lib_header)
-        layout.addSpacing(8)
-        
-        self._library_scroll = QScrollArea()
-        self._library_scroll.setWidgetResizable(True)
-        self._library_scroll.setStyleSheet("""
-            QScrollArea { border: none; background: transparent; }
-            QScrollBar:vertical { background: transparent; width: 4px; }
-            QScrollBar::handle:vertical { background: rgba(255,255,255,0.15); border-radius: 2px; }
-        """)
-        self._library_widget = QWidget()
-        self._library_widget.setStyleSheet("background: transparent;")
-        self._library_layout = QVBoxLayout(self._library_widget)
-        self._library_layout.setContentsMargins(0, 0, 0, 0)
-        self._library_layout.setSpacing(2)
-        self._library_layout.addStretch()
-        self._library_scroll.setWidget(self._library_widget)
-        layout.addWidget(self._library_scroll, 1)
-        
-        layout.addSpacing(12)
-        
-        # ── Playlist başlığı ────────────────────────────────────
-        pl_header = QFrame()
-        pl_header.setStyleSheet("background: transparent;")
-        pl_h_layout = QHBoxLayout(pl_header)
-        pl_h_layout.setContentsMargins(24, 0, 16, 0)
-        pl_h_layout.setSpacing(0)
-        
-        pl_label = QLabel("PLAYLISTLER")
-        pl_label.setStyleSheet(f"""
-            QLabel {{
-                color: {_TEXT_TERTIARY};
-                font-size: 11px;
-                font-weight: 700;
-                letter-spacing: 1.5px;
-                background: transparent;
-            }}
-        """)
-        pl_h_layout.addWidget(pl_label)
-        pl_h_layout.addStretch()
-        layout.addWidget(pl_header)
-        layout.addSpacing(8)
-        
-        self._playlist_scroll = QScrollArea()
-        self._playlist_scroll.setWidgetResizable(True)
-        self._playlist_scroll.setStyleSheet("""
-            QScrollArea { border: none; background: transparent; }
-            QScrollBar:vertical { background: transparent; width: 4px; }
-            QScrollBar::handle:vertical { background: rgba(255,255,255,0.15); border-radius: 2px; }
-        """)
-        self._playlist_widget = QWidget()
-        self._playlist_widget.setStyleSheet("background: transparent;")
-        self._playlist_layout = QVBoxLayout(self._playlist_widget)
-        self._playlist_layout.setContentsMargins(0, 0, 0, 0)
-        self._playlist_layout.setSpacing(2)
-        self._playlist_layout.addStretch()
-        self._playlist_scroll.setWidget(self._playlist_widget)
-        layout.addWidget(self._playlist_scroll, 1)
-        
-        layout.addSpacing(16)
-        
-        # ── Yeni Playlist butonu ─────────────────────────────────
-        new_pl_btn = QPushButton("+ Yeni Playlist")
-        new_pl_btn.setStyleSheet(f"""
+        for btn_i, (icon, label, page_idx) in enumerate(nav_data):
+            btn = QPushButton(f"  {icon}   {label}")
+            btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            self._set_nav_btn_active(btn, False)   # başta hepsi pasif
+            btn.clicked.connect(
+                lambda checked=False, pi=page_idx, bi=btn_i: self._nav_to_page(pi, bi)
+            )
+            self._nav_btns.append(btn)
+            layout.addWidget(btn)
+
+        layout.addStretch()
+
+        # ── Yeni Playlist ─────────────────────────────────────
+        new_pl = QPushButton("+ Yeni Playlist")
+        new_pl.setCursor(Qt.CursorShape.PointingHandCursor)
+        new_pl.setStyleSheet(f"""
             QPushButton {{
                 background: transparent;
                 color: {_ACCENT};
@@ -782,23 +665,22 @@ class MusicFullPage(QWidget):
                 border: 1px solid {_ACCENT};
             }}
         """)
-        layout.addWidget(new_pl_btn)
-
-        # ── Profil alanı (sidebar alt) ────────────────────────
+        layout.addWidget(new_pl)
         layout.addSpacing(14)
 
+        # ── Ayraç ─────────────────────────────────────────────
         sep = QFrame()
         sep.setFixedHeight(1)
         sep.setStyleSheet("background: rgba(255,255,255,0.07); border: none;")
         layout.addWidget(sep)
-
         layout.addSpacing(12)
 
-        profile_row = QFrame()
-        profile_row.setStyleSheet("background: transparent;")
-        pr_layout = QHBoxLayout(profile_row)
-        pr_layout.setContentsMargins(24, 0, 16, 0)
-        pr_layout.setSpacing(12)
+        # ── Profil alanı ──────────────────────────────────────
+        prof_w = QWidget()
+        prof_w.setStyleSheet("background: transparent;")
+        prof_row = QHBoxLayout(prof_w)
+        prof_row.setContentsMargins(20, 0, 20, 20)
+        prof_row.setSpacing(12)
 
         avatar = QLabel("VN")
         avatar.setFixedSize(34, 34)
@@ -813,35 +695,51 @@ class MusicFullPage(QWidget):
                 border: 1px solid rgba(255,255,255,0.1);
             }}
         """)
-        pr_layout.addWidget(avatar)
+        prof_row.addWidget(avatar)
 
-        user_col = QVBoxLayout()
-        user_col.setSpacing(1)
-        user_name_lbl = QLabel("Visionary")
-        user_name_lbl.setStyleSheet(f"color: {_TEXT_PRIMARY}; font-size: 12px; font-weight: 700; background: transparent;")
-        user_col.addWidget(user_name_lbl)
-        user_badge_lbl = QLabel("Pro Member")
-        user_badge_lbl.setStyleSheet(f"color: {_TEXT_TERTIARY}; font-size: 10px; background: transparent;")
-        user_col.addWidget(user_badge_lbl)
-        pr_layout.addLayout(user_col, 1)
-
-        layout.addWidget(profile_row)
+        ucol = QVBoxLayout()
+        ucol.setSpacing(1)
+        uname = QLabel("Visionary")
+        uname.setStyleSheet(f"color: {_TEXT_PRIMARY}; font-size: 12px; font-weight: 700; background: transparent;")
+        ubadge = QLabel("Pro Member")
+        ubadge.setStyleSheet(f"color: {_TEXT_TERTIARY}; font-size: 10px; background: transparent;")
+        ucol.addWidget(uname)
+        ucol.addWidget(ubadge)
+        prof_row.addLayout(ucol, 1)
+        layout.addWidget(prof_w)
 
         return sidebar
-        
+
     def _create_sidebar_nav_btn(self, icon: str, text: str, active: bool = False) -> QPushButton:
-        """Sidebar nav button — Visionary Music stili."""
+        """Sidebar nav button — geriye dönük uyumluluk için korundu."""
         btn = QPushButton(f"  {icon}  {text}")
+        self._set_nav_btn_active(btn, active)
+        return btn
+
+    # ───────────────────────────────────────────────────────────────
+    #  NAVİGASYON  —  sayfa geçişi + buton aktif/pasif
+    # ───────────────────────────────────────────────────────────────
+
+    def _nav_to_page(self, page_idx: int, btn_idx: int = -1):
+        """Sayfaya geç + sidebar buton durumunu güncelle."""
+        self._pages.setCurrentIndex(page_idx)
+        # btn_idx belirtilmediyse sayfa_idx = buton_idx (0→0, 1→1, 2→2)
+        effective = btn_idx if btn_idx >= 0 else page_idx
+        for i, btn in enumerate(self._nav_btns):
+            self._set_nav_btn_active(btn, i == effective)
+
+    def _set_nav_btn_active(self, btn: QPushButton, active: bool):
+        """Sidebar nav butonuna aktif/pasif stili uygula."""
         if active:
             btn.setStyleSheet(f"""
                 QPushButton {{
-                    background: rgba(0,255,65,0.05);
+                    background: rgba(0,255,65,0.07);
                     color: {_ACCENT};
                     border: none;
                     border-left: 3px solid {_ACCENT};
                     padding: 12px 20px;
                     text-align: left;
-                    font-size: 15px;
+                    font-size: 14px;
                     font-weight: 700;
                 }}
             """)
@@ -854,7 +752,7 @@ class MusicFullPage(QWidget):
                     border-left: 3px solid transparent;
                     padding: 12px 20px;
                     text-align: left;
-                    font-size: 15px;
+                    font-size: 14px;
                     font-weight: 500;
                 }}
                 QPushButton:hover {{
@@ -862,8 +760,535 @@ class MusicFullPage(QWidget):
                     color: {_TEXT_PRIMARY};
                 }}
             """)
-        return btn
-        
+
+    # ───────────────────────────────────────────────────────────────
+    #  ANA SAYFA  —  Hero + kategoriler + trend şarkılar
+    # ───────────────────────────────────────────────────────────────
+
+    def _build_ana_sayfa_page(self) -> QWidget:
+        """Ana Sayfa (index 0) — hero + grid kategoriler + trend listesi."""
+        page = QScrollArea()
+        page.setWidgetResizable(True)
+        page.setStyleSheet(f"""
+            QScrollArea {{ border: none; background: transparent; }}
+            QScrollBar:vertical {{ background: transparent; width: 8px; }}
+            QScrollBar::handle:vertical {{ background: {_SURFACE3}; border-radius: 4px; }}
+            QScrollBar::handle:vertical:hover {{ background: {_ACCENT}; }}
+            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height: 0; }}
+        """)
+
+        content = QWidget()
+        content.setStyleSheet("background: transparent;")
+        layout = QVBoxLayout(content)
+        layout.setContentsMargins(28, 24, 28, 32)
+        layout.setSpacing(28)
+
+        # ── Üst arama çubuğu → Keşfet'e yönlendirir ──────────
+        sf = QFrame()
+        sf.setFixedHeight(44)
+        sf.setStyleSheet(f"""
+            QFrame {{
+                background: rgba(42,42,42,0.9);
+                border: 1px solid rgba(255,255,255,0.08);
+                border-radius: 22px;
+            }}
+        """)
+        sf_layout = QHBoxLayout(sf)
+        sf_layout.setContentsMargins(16, 0, 8, 0)
+        sf_layout.setSpacing(8)
+
+        sch_icon = QLabel("🔍")
+        sch_icon.setStyleSheet(f"color: {_TEXT_TERTIARY}; background: transparent; font-size: 14px;")
+        sf_layout.addWidget(sch_icon)
+
+        sch_input = QLineEdit()
+        sch_input.setPlaceholderText("Şarkı, sanatçı veya albüm ara...")
+        sch_input.setStyleSheet(f"""
+            QLineEdit {{
+                background: transparent;
+                border: none;
+                color: {_TEXT_PRIMARY};
+                font-size: 14px;
+            }}
+        """)
+        sch_input.returnPressed.connect(lambda: self._nav_to_page(1, 1))
+        sf_layout.addWidget(sch_input, 1)
+        layout.addWidget(sf)
+
+        # ── Hero kartı ────────────────────────────────────────
+        hero = QFrame()
+        hero.setFixedHeight(300)
+        hero.setStyleSheet(f"""
+            QFrame {{
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
+                    stop:0 #1a2b1a, stop:0.55 #161e16, stop:1 {_BG});
+                border: 1px solid rgba(0,255,65,0.18);
+                border-radius: 22px;
+            }}
+        """)
+        hero_layout = QHBoxLayout(hero)
+        hero_layout.setContentsMargins(44, 36, 36, 36)
+        hero_layout.setSpacing(24)
+
+        lc = QVBoxLayout()
+        lc.setSpacing(10)
+
+        badge_lbl = QLabel("  ● Öne Çıkan Mix  ")
+        badge_lbl.setFixedHeight(24)
+        badge_lbl.setMaximumWidth(190)
+        badge_lbl.setStyleSheet(f"""
+            QLabel {{
+                color: {_ACCENT};
+                background: rgba(0,255,65,0.12);
+                border: 1px solid rgba(0,255,65,0.3);
+                border-radius: 12px;
+                font-size: 10px;
+                font-weight: 700;
+                letter-spacing: 1px;
+                padding: 0 2px;
+            }}
+        """)
+        lc.addWidget(badge_lbl)
+
+        hero_title = QLabel("Synaptic Flow")
+        hero_title.setStyleSheet(f"""
+            QLabel {{
+                color: {_TEXT_PRIMARY};
+                font-size: 44px;
+                font-weight: 800;
+                letter-spacing: -1.5px;
+                background: transparent;
+            }}
+        """)
+        lc.addWidget(hero_title)
+
+        hero_desc = QLabel("Kişiselleştirilmiş yüksek enerjili elektronik müzik\nve derin bas akışı. Odaklanmak için açın.")
+        hero_desc.setWordWrap(True)
+        hero_desc.setStyleSheet(f"color: {_TEXT_SECONDARY}; font-size: 13px; background: transparent;")
+        lc.addWidget(hero_desc)
+        lc.addSpacing(6)
+
+        btn_row = QHBoxLayout()
+        btn_row.setSpacing(10)
+
+        play_hero = QPushButton("▶  Oynat")
+        play_hero.setFixedHeight(42)
+        play_hero.setCursor(Qt.CursorShape.PointingHandCursor)
+        play_hero.setStyleSheet(f"""
+            QPushButton {{
+                background: {_ACCENT};
+                color: #003907;
+                border: none;
+                border-radius: 21px;
+                font-size: 14px;
+                font-weight: 700;
+                padding: 0 28px;
+            }}
+            QPushButton:hover {{ background: {_ACCENT_LIGHT}; }}
+        """)
+        play_hero.clicked.connect(
+            lambda: self._play_stream("https://www.youtube.com/watch?v=jfKfPfyJRdk")
+        )
+        btn_row.addWidget(play_hero)
+
+        save_btn = QPushButton("Kaydet")
+        save_btn.setFixedHeight(42)
+        save_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        save_btn.setStyleSheet(f"""
+            QPushButton {{
+                background: transparent;
+                color: {_TEXT_PRIMARY};
+                border: 1px solid rgba(255,255,255,0.2);
+                border-radius: 21px;
+                font-size: 14px;
+                font-weight: 600;
+                padding: 0 24px;
+            }}
+            QPushButton:hover {{ background: rgba(255,255,255,0.08); }}
+        """)
+        btn_row.addWidget(save_btn)
+        btn_row.addStretch()
+        lc.addLayout(btn_row)
+        lc.addStretch()
+        hero_layout.addLayout(lc, 3)
+
+        # Albüm kapağı placeholder
+        art = QFrame()
+        art.setFixedSize(210, 210)
+        art.setStyleSheet(f"""
+            QFrame {{
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
+                    stop:0 #2a3a2a, stop:1 #1a2a1a);
+                border: 1px solid rgba(0,255,65,0.2);
+                border-radius: 16px;
+            }}
+        """)
+        art_inner = QVBoxLayout(art)
+        art_inner.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        art_lbl = QLabel("♫")
+        art_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        art_lbl.setStyleSheet(f"color: {_ACCENT}; font-size: 72px; background: transparent;")
+        art_inner.addWidget(art_lbl)
+        hero_layout.addWidget(art)
+        layout.addWidget(hero)
+
+        # ── Kategoriler ───────────────────────────────────────
+        cat_hdr = QHBoxLayout()
+        c_title = QLabel("Kategoriler")
+        c_title.setStyleSheet(f"color: {_TEXT_PRIMARY}; font-size: 20px; font-weight: 700; background: transparent;")
+        cat_hdr.addWidget(c_title)
+        cat_hdr.addStretch()
+        c_all = QLabel("TÜMÜNÜ GÖR")
+        c_all.setStyleSheet(f"color: {_ACCENT}; font-size: 10px; font-weight: 700; letter-spacing: 1px; background: transparent;")
+        cat_hdr.addWidget(c_all)
+        layout.addLayout(cat_hdr)
+
+        cats_row = QHBoxLayout()
+        cats_row.setSpacing(12)
+        for cat_name, cat_sub, cat_bg in [
+            ("Techno Bunker", "Derin & koyu",    "#181826"),
+            ("Ambient Void",  "Atmosferik",       "#161e16"),
+            ("Synthwave '84", "Retro fütüristik", "#261818"),
+            ("Lo-fi Beats",   "Rahatlatıcı",      "#161e1e"),
+        ]:
+            c = QFrame()
+            c.setFixedHeight(110)
+            c.setCursor(Qt.CursorShape.PointingHandCursor)
+            c.setStyleSheet(f"""
+                QFrame {{
+                    background: {cat_bg};
+                    border: 1px solid rgba(255,255,255,0.06);
+                    border-radius: 14px;
+                }}
+                QFrame:hover {{ border: 1px solid rgba(0,255,65,0.3); }}
+            """)
+            cl = QVBoxLayout(c)
+            cl.setContentsMargins(16, 16, 16, 16)
+            cl.addStretch()
+            ct = QLabel(cat_name)
+            ct.setStyleSheet(f"color: {_TEXT_PRIMARY}; font-size: 13px; font-weight: 700; background: transparent;")
+            cs = QLabel(cat_sub)
+            cs.setStyleSheet(f"color: {_TEXT_TERTIARY}; font-size: 11px; background: transparent;")
+            cl.addWidget(ct)
+            cl.addWidget(cs)
+            cats_row.addWidget(c, 1)
+        layout.addLayout(cats_row)
+
+        # ── Trend şarkılar (özet 3 satır) ─────────────────────
+        tr_hdr = QHBoxLayout()
+        tr_l = QLabel("Trend Şarkılar")
+        tr_l.setStyleSheet(f"color: {_TEXT_PRIMARY}; font-size: 20px; font-weight: 700; background: transparent;")
+        tr_hdr.addWidget(tr_l)
+        tr_hdr.addStretch()
+        tr_btn = QPushButton("Tümünü Gör →")
+        tr_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        tr_btn.setStyleSheet(f"""
+            QPushButton {{
+                background: transparent;
+                color: {_ACCENT};
+                border: none;
+                font-size: 12px;
+                font-weight: 700;
+            }}
+            QPushButton:hover {{ color: {_ACCENT_LIGHT}; }}
+        """)
+        tr_btn.clicked.connect(lambda: self._nav_to_page(1, 1))
+        tr_hdr.addWidget(tr_btn)
+        layout.addLayout(tr_hdr)
+
+        for i, (title, url) in enumerate([
+            ("Lofi Hip Hop Radio — Beats to Relax/Study",
+             "https://www.youtube.com/watch?v=jfKfPfyJRdk"),
+            ("Synthwave Radio — Beats to Chill/Game",
+             "https://www.youtube.com/watch?v=4xDzrJKXOOY"),
+            ("Chillhop Radio — Jazzy & Lo-fi Hip Hop",
+             "https://www.youtube.com/watch?v=5yx6BWlEVcY"),
+        ]):
+            row = QFrame()
+            row.setFixedHeight(64)
+            row.setCursor(Qt.CursorShape.PointingHandCursor)
+            row.setStyleSheet(f"""
+                QFrame {{
+                    background: rgba(18,18,18,0.7);
+                    border: 1px solid rgba(255,255,255,0.06);
+                    border-radius: 12px;
+                }}
+                QFrame:hover {{
+                    background: rgba(0,255,65,0.05);
+                    border: 1px solid rgba(0,255,65,0.2);
+                }}
+            """)
+            rl = QHBoxLayout(row)
+            rl.setContentsMargins(16, 0, 12, 0)
+            rl.setSpacing(12)
+
+            num_l = QLabel(str(i + 1))
+            num_l.setFixedWidth(20)
+            num_l.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            num_l.setStyleSheet(f"color: {_TEXT_TERTIARY}; font-size: 12px; background: transparent;")
+            rl.addWidget(num_l)
+
+            art_m = QFrame()
+            art_m.setFixedSize(40, 40)
+            art_m.setStyleSheet(f"background: {_SURFACE2}; border-radius: 8px; border: none;")
+            art_m_lbl = QLabel("♫", art_m)
+            art_m_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            art_m_lbl.setGeometry(0, 0, 40, 40)
+            art_m_lbl.setStyleSheet(f"color: {_ACCENT}; font-size: 16px; background: transparent;")
+            rl.addWidget(art_m)
+
+            t_l = QLabel(title)
+            t_l.setStyleSheet(f"color: {_TEXT_PRIMARY}; font-size: 13px; font-weight: 500; background: transparent;")
+            rl.addWidget(t_l, 1)
+
+            p_btn = QPushButton("▶")
+            p_btn.setFixedSize(32, 32)
+            p_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            p_btn.setStyleSheet(f"""
+                QPushButton {{
+                    background: {_ACCENT};
+                    color: #003907;
+                    border: none;
+                    border-radius: 16px;
+                    font-size: 12px;
+                    font-weight: bold;
+                }}
+                QPushButton:hover {{ background: {_ACCENT_LIGHT}; }}
+            """)
+            p_btn.clicked.connect(lambda checked=False, u=url: self._play_stream(u))
+            rl.addWidget(p_btn)
+            layout.addWidget(row)
+
+        layout.addStretch()
+        page.setWidget(content)
+        return page
+
+    # ───────────────────────────────────────────────────────────────
+    #  KEŞFET  —  arama + video + sonuçlar (mevcut işlevsellik)
+    # ───────────────────────────────────────────────────────────────
+
+    def _build_kesfet_page(self) -> QWidget:
+        """Keşfet sayfası (index 1) — arama çubuğu + video + sonuçlar."""
+        page = QWidget()
+        page.setStyleSheet("background: transparent;")
+        page_layout = QVBoxLayout(page)
+        page_layout.setContentsMargins(0, 0, 0, 0)
+        page_layout.setSpacing(0)
+
+        # Arama başlığı (_search_input, _search_btn, _url_input, vb. burada oluşur)
+        page_layout.addWidget(self._build_search_header())
+
+        # Video + Sonuçlar dikey splitter
+        self._content_splitter = QSplitter(Qt.Orientation.Vertical)
+        self._content_splitter.setStyleSheet(f"""
+            QSplitter::handle {{
+                background: {_GLASS_BORDER};
+                height: 2px;
+            }}
+        """)
+
+        # Video container (başlangıçta gizli)
+        self._video_container = self._build_video_page()
+        self._video_container.hide()
+        self._content_splitter.addWidget(self._video_container)
+
+        # Sonuçlar scroll
+        self._results_scroll = QScrollArea()
+        self._results_scroll.setWidgetResizable(True)
+        self._results_scroll.setStyleSheet(f"""
+            QScrollArea {{ border: none; background: transparent; }}
+            QScrollBar:vertical {{ background: transparent; width: 8px; }}
+            QScrollBar::handle:vertical {{ background: {_SURFACE3}; border-radius: 4px; }}
+            QScrollBar::handle:vertical:hover {{ background: {_ACCENT}; }}
+            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height: 0; }}
+        """)
+        self._results_widget = QWidget()
+        self._results_widget.setStyleSheet("background: transparent;")
+        self._results_layout = QVBoxLayout(self._results_widget)
+        self._results_layout.setContentsMargins(0, 0, 0, 20)
+        self._results_layout.setSpacing(0)
+        self._results_layout.addStretch()
+        self._results_scroll.setWidget(self._results_widget)
+
+        results_outer = QWidget()
+        results_outer.setStyleSheet("background: transparent;")
+        ro_layout = QVBoxLayout(results_outer)
+        ro_layout.setContentsMargins(0, 0, 0, 0)
+        ro_layout.setSpacing(0)
+
+        # _section_title_label burada oluşur (_build_section_header içinde)
+        self._section_header = self._build_section_header()
+        ro_layout.addWidget(self._section_header)
+        ro_layout.addWidget(self._results_scroll, 1)
+
+        self._content_splitter.addWidget(results_outer)
+        self._content_splitter.setStretchFactor(0, 2)
+        self._content_splitter.setStretchFactor(1, 1)
+
+        page_layout.addWidget(self._content_splitter, 1)
+        return page
+
+    # ───────────────────────────────────────────────────────────────
+    #  KÜTÜPHANEfullpage  —  track tablosu + koleksiyonlar
+    # ───────────────────────────────────────────────────────────────
+
+    def _build_kutuphane_page(self) -> QWidget:
+        """Kütüphane sayfası (index 2) — track listesi + playlist koleksiyonu."""
+        page = QScrollArea()
+        page.setWidgetResizable(True)
+        page.setStyleSheet(f"""
+            QScrollArea {{ border: none; background: transparent; }}
+            QScrollBar:vertical {{ background: transparent; width: 8px; }}
+            QScrollBar::handle:vertical {{ background: {_SURFACE3}; border-radius: 4px; }}
+            QScrollBar::handle:vertical:hover {{ background: {_ACCENT}; }}
+            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height: 0; }}
+        """)
+
+        content = QWidget()
+        content.setStyleSheet("background: transparent;")
+        layout = QVBoxLayout(content)
+        layout.setContentsMargins(28, 24, 28, 32)
+        layout.setSpacing(24)
+
+        # ── Son Aktivite başlığı ──────────────────────────────
+        act_hdr = QHBoxLayout()
+        act_t = QLabel("Son Aktivite")
+        act_t.setStyleSheet(f"color: {_TEXT_PRIMARY}; font-size: 20px; font-weight: 700; background: transparent;")
+        act_hdr.addWidget(act_t)
+        act_hdr.addStretch()
+        act_all = QLabel("TÜMÜNÜ GÖR")
+        act_all.setStyleSheet(f"color: {_ACCENT}; font-size: 10px; font-weight: 700; letter-spacing: 1px; background: transparent;")
+        act_hdr.addWidget(act_all)
+        layout.addLayout(act_hdr)
+
+        # Cam panel — track tablosu
+        tt = QFrame()
+        tt.setStyleSheet(f"""
+            QFrame {{
+                background: rgba(18,18,18,0.6);
+                border: 1px solid rgba(255,255,255,0.07);
+                border-radius: 16px;
+            }}
+        """)
+        tt_layout = QVBoxLayout(tt)
+        tt_layout.setContentsMargins(0, 0, 0, 0)
+        tt_layout.setSpacing(0)
+
+        # Sütun başlıkları
+        ch = QFrame()
+        ch.setFixedHeight(40)
+        ch.setStyleSheet(
+            "QFrame { background: transparent; border-bottom: 1px solid rgba(255,255,255,0.07);"
+            " border-top-left-radius: 16px; border-top-right-radius: 16px; }"
+        )
+        ch_layout = QHBoxLayout(ch)
+        ch_layout.setContentsMargins(24, 0, 24, 0)
+        ch_layout.setSpacing(12)
+        for txt, fixed_w in [("#", 28), ("BAŞLIK", 0), ("⏱", 60)]:
+            lbl = QLabel(txt)
+            lbl.setStyleSheet(
+                f"color: {_TEXT_TERTIARY}; font-size: 11px; font-weight: 700;"
+                " letter-spacing: 1px; background: transparent;"
+            )
+            if fixed_w:
+                lbl.setFixedWidth(fixed_w)
+                lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            ch_layout.addWidget(lbl, 0 if fixed_w else 1)
+        tt_layout.addWidget(ch)
+
+        # Kütüphane scroll (_add_library_item buraya ekler)
+        self._library_scroll = QScrollArea()
+        self._library_scroll.setWidgetResizable(True)
+        self._library_scroll.setMaximumHeight(320)
+        self._library_scroll.setStyleSheet("""
+            QScrollArea { border: none; background: transparent; }
+            QScrollBar:vertical { background: transparent; width: 6px; }
+            QScrollBar::handle:vertical { background: #353534; border-radius: 3px; }
+        """)
+        self._library_widget = QWidget()
+        self._library_widget.setStyleSheet("background: transparent;")
+        self._library_layout = QVBoxLayout(self._library_widget)
+        self._library_layout.setContentsMargins(0, 4, 0, 4)
+        self._library_layout.setSpacing(2)
+        self._library_layout.addStretch()
+        self._library_scroll.setWidget(self._library_widget)
+        tt_layout.addWidget(self._library_scroll)
+        layout.addWidget(tt)
+
+        # ── Koleksiyonlar başlığı ────────────────────────────
+        col_hdr = QHBoxLayout()
+        col_t = QLabel("Koleksiyonlar")
+        col_t.setStyleSheet(f"color: {_TEXT_PRIMARY}; font-size: 20px; font-weight: 700; background: transparent;")
+        col_hdr.addWidget(col_t)
+        col_hdr.addStretch()
+        layout.addLayout(col_hdr)
+
+        # Cam panel — playlist kartları
+        pc = QFrame()
+        pc.setStyleSheet(f"""
+            QFrame {{
+                background: rgba(18,18,18,0.6);
+                border: 1px solid rgba(255,255,255,0.07);
+                border-radius: 16px;
+            }}
+        """)
+        pc_layout = QVBoxLayout(pc)
+        pc_layout.setContentsMargins(0, 0, 0, 8)
+        pc_layout.setSpacing(0)
+
+        # "Beğenilenler" sabit kart
+        lc_frame = QFrame()
+        lc_frame.setFixedHeight(72)
+        lc_frame.setCursor(Qt.CursorShape.PointingHandCursor)
+        lc_frame.setStyleSheet(f"""
+            QFrame {{
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
+                    stop:0 rgba(0,255,65,0.1), stop:1 transparent);
+                border-bottom: 1px solid rgba(255,255,255,0.06);
+                border-top-left-radius: 16px;
+                border-top-right-radius: 16px;
+            }}
+            QFrame:hover {{ background: rgba(0,255,65,0.06); }}
+        """)
+        lc_row = QHBoxLayout(lc_frame)
+        lc_row.setContentsMargins(20, 0, 20, 0)
+        lc_row.setSpacing(14)
+
+        lc_icon = QLabel("♥")
+        lc_icon.setFixedSize(44, 44)
+        lc_icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        lc_icon.setStyleSheet(
+            f"color: {_ACCENT}; font-size: 20px;"
+            f" background: rgba(0,255,65,0.15); border-radius: 8px; border: none;"
+        )
+        lc_row.addWidget(lc_icon)
+
+        lc_col = QVBoxLayout()
+        lc_col.setSpacing(2)
+        lc_n = QLabel("Beğenilenler")
+        lc_n.setStyleSheet(f"color: {_TEXT_PRIMARY}; font-size: 14px; font-weight: 700; background: transparent;")
+        lc_s = QLabel("Beğendiğiniz şarkılar")
+        lc_s.setStyleSheet(f"color: {_TEXT_TERTIARY}; font-size: 11px; background: transparent;")
+        lc_col.addWidget(lc_n)
+        lc_col.addWidget(lc_s)
+        lc_row.addLayout(lc_col, 1)
+        pc_layout.addWidget(lc_frame)
+
+        # Playlist öğeleri (_add_playlist_item buraya ekler)
+        self._playlist_widget = QWidget()
+        self._playlist_widget.setStyleSheet("background: transparent;")
+        self._playlist_layout = QVBoxLayout(self._playlist_widget)
+        self._playlist_layout.setContentsMargins(0, 0, 0, 0)
+        self._playlist_layout.setSpacing(2)
+        self._playlist_layout.addStretch()
+        pc_layout.addWidget(self._playlist_widget)
+        layout.addWidget(pc)
+
+        layout.addStretch()
+        page.setWidget(content)
+        return page
+
+
     def _build_section_header(self) -> QWidget:
         """Bölüm başlığı: dinamik title + sütun başlıkları (# | BAŞLIK | SÜRE)."""
         frame = QFrame()
@@ -2135,6 +2560,7 @@ class MusicFullPage(QWidget):
         
     def _watch_video_url(self, url: str):
         """YouTube video URL'den video izle."""
+        self._nav_to_page(1, 1)  # Keşfet sayfasına geç (video orada)
         if self._stream_worker:
             self._stream_worker.quit()
             self._stream_worker.wait()
