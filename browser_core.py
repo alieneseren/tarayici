@@ -2680,6 +2680,11 @@ class VisionaryBrowser(QMainWindow):
             lambda u, tab=tab: self._update_address_bar(tab, u)
         )
 
+        # Sayfa yüklenince geri/ileri butonlarını güncelle (history yükleme sonrası güncellenir)
+        tab.loadFinished.connect(
+            lambda ok, tab=tab: self._update_nav_buttons() if tab == self._current_tab() else None
+        )
+
         # Yükleme başladığında/bittiğinde durum çubuğunu güncelle
         tab.loadStarted.connect(
             lambda: self._status_url.setText("Yükleniyor...")
@@ -2802,11 +2807,33 @@ class VisionaryBrowser(QMainWindow):
         widget = self._tab_widget.currentWidget()
         return widget if isinstance(widget, QWebEngineView) else None
 
+    def _update_nav_buttons(self) -> None:
+        """Geri/İleri butonlarını aktif sekmenin geçmişine göre aktif/pasif yap."""
+        tab = self._current_tab()
+        can_back = tab.history().canGoBack() if tab else False
+        can_fwd = tab.history().canGoForward() if tab else False
+        self._back_btn.setEnabled(can_back)
+        self._fwd_btn.setEnabled(can_fwd)
+        # Görsel opacity
+        self._back_btn.setStyleSheet(
+            "" if can_back else "QPushButton { opacity: 0.35; }"
+        )
+        self._fwd_btn.setStyleSheet(
+            "" if can_fwd else "QPushButton { opacity: 0.35; }"
+        )
+
     def _on_tab_changed(self, index: int) -> None:
         """Aktif sekme değiştiğinde adres çubuğunu günceller ve panelleri yönetir."""
         tab = self._current_tab()
         if tab:
             self._address_bar.setText(tab.url().toString())
+        else:
+            # NewTabPage veya diğer özel sayfalar — adres çubuğunu temizle
+            self._address_bar.clear()
+            if hasattr(self, '_lock_lbl'):
+                self._lock_lbl.setText("🔍")
+                self._lock_lbl.setToolTip("")
+        self._update_nav_buttons()
         self._update_ghost_button_state()
 
         QTimer.singleShot(50, self._update_new_tab_btn_pos)
@@ -2846,6 +2873,8 @@ class VisionaryBrowser(QMainWindow):
                 else:
                     self._lock_lbl.setText("🔍")
                     self._lock_lbl.setToolTip("")
+            # Geri/İleri butonlarını güncelle
+            self._update_nav_buttons()
 
     # ─── Navigasyon ───────────────────────────────────────────────
 
