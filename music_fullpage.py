@@ -31,24 +31,24 @@ logger.setLevel(logging.INFO)
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 #  PREMIUM DARK ELEGANT RENK PALETİ
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-_BG = "#111111"                    # Derin siyah
-_BG_SECONDARY = "#181818"          # İkincil arkaplan
-_SURFACE = "#1F1F1F"               # Panel yüzeyi
-_SURFACE2 = "#272727"              # Hover yüzeyi
-_SURFACE3 = "#303030"              # Kart yüzeyi
-_ACCENT = "#4B8EF5"                # Profesyonel mavi
-_ACCENT_LIGHT = "#74AAF8"          # Açık mavi
-_ACCENT_WARM = "#D4884A"           # Muted amber (indirme)
-_ACCENT_ROSE = "#D95E5E"           # Muted kırmızı (izle)
-_TEXT_PRIMARY = "#EBEBEB"          # Neredeyse beyaz
-_TEXT_SECONDARY = "#888888"        # Gri
-_TEXT_TERTIARY = "#555555"         # Koyu gri
-_GLASS_BG = "rgba(31,31,31,0.97)"  # Koyu panel
-_GLASS_BORDER = "rgba(255,255,255,0.07)"  # Çok hafif border
-_CARD_BG = "rgba(39,39,39,0.7)"
-_CARD_HOVER = "rgba(75,142,245,0.06)"
-_GRADIENT_START = "#4B8EF5"        # Accent ile aynı (düz görünüm)
-_GRADIENT_END = "#4B8EF5"          # Accent ile aynı (düz görünüm)
+_BG = "#07090F"                    # Derin uzay siyahı
+_BG_SECONDARY = "#0C0F1A"          # Lacivert-siyah
+_SURFACE = "#111728"               # Panel yüzeyi
+_SURFACE2 = "#182035"              # Hover yüzeyi
+_SURFACE3 = "#1E2840"              # Kart yüzeyi
+_ACCENT = "#3D9FFF"                # Elektrik mavisi
+_ACCENT_LIGHT = "#70BCFF"          # Açık elektrik mavisi
+_ACCENT_WARM = "#FF9A3C"           # Turuncu (indirme)
+_ACCENT_ROSE = "#FF5C8D"           # Pembe (izle)
+_TEXT_PRIMARY = "#DAEEFF"          # Buzlu beyaz
+_TEXT_SECONDARY = "#5A8AB0"        # Mavi-gri
+_TEXT_TERTIARY = "#2E5070"         # Koyu mavi
+_GLASS_BG = "rgba(9,11,22,0.97)"   # Koyu cam
+_GLASS_BORDER = "rgba(61,159,255,0.15)"  # Mavi parlayan sınır
+_CARD_BG = "rgba(14,19,36,0.85)"
+_CARD_HOVER = "rgba(61,159,255,0.07)"
+_GRADIENT_START = "#3D9FFF"        # Mavi gradient başlangıç
+_GRADIENT_END = "#8B5CF6"          # Mor gradient bitiş
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -98,12 +98,12 @@ class _SoftWaveWidget(QWidget):
         width = self.width()
         height = self.height()
         
-        # Profesyonel mavi-gri renk şeması
+        # Futuristik elektrik mavisi dalga renk şeması
         colors = [
-            QColor(75, 142, 245, 32),   # Muted blue
-            QColor(100, 160, 248, 40),  # Light blue
-            QColor(75, 142, 245, 25),   # Muted blue (derin)
-            QColor(130, 175, 240, 30)   # Pale blue
+            QColor(61, 159, 255, 60),   # Electric blue
+            QColor(112, 188, 255, 70),  # Lighter blue
+            QColor(61, 159, 255, 48),   # Electric blue deep
+            QColor(139, 92, 246, 55)    # Purple wave
         ]
         
         for idx in range(self._num_waves):
@@ -167,8 +167,8 @@ class _AmbiancePulseOverlay(QWidget):
         radius = int(max(w, h) * 0.6)
         
         gradient = QRadialGradient(center_x, center_y, radius)
-        gradient.setColorAt(0.0, QColor(75, 142, 245, int(self._opacity * 50)))
-        gradient.setColorAt(0.5, QColor(75, 142, 245, int(self._opacity * 20)))
+        gradient.setColorAt(0.0, QColor(61, 159, 255, int(self._opacity * 90)))
+        gradient.setColorAt(0.5, QColor(61, 159, 255, int(self._opacity * 35)))
         gradient.setColorAt(1.0, QColor(0, 0, 0, 0))
         
         painter.setBrush(QBrush(gradient))
@@ -191,8 +191,8 @@ class _AestheticButton(QPushButton):
                 background: {_SURFACE2};
                 color: {_TEXT_PRIMARY};
                 border: 1px solid {_GLASS_BORDER};
-                border-radius: 12px;
-                padding: 10px 20px;
+                border-radius: 9999px;
+                padding: 10px 24px;
                 font-size: 14px;
                 font-weight: 500;
             }}
@@ -208,20 +208,20 @@ class _AestheticButton(QPushButton):
     def _ensure_glow(self):
         if self._glow_effect is None:
             self._glow_effect = QGraphicsDropShadowEffect()
-            self._glow_effect.setColor(QColor(75, 142, 245, 0))
-            self._glow_effect.setBlurRadius(16)
+            self._glow_effect.setColor(QColor(61, 159, 255, 0))
+            self._glow_effect.setBlurRadius(26)
             self._glow_effect.setOffset(0, 0)
             self.setGraphicsEffect(self._glow_effect)
             
     def enterEvent(self, event):
         self._ensure_glow()
         if self._glow_effect:
-            self._glow_effect.setColor(QColor(75, 142, 245, 90))
+            self._glow_effect.setColor(QColor(61, 159, 255, 150))
         super().enterEvent(event)
         
     def leaveEvent(self, event):
         if self._glow_effect:
-            self._glow_effect.setColor(QColor(75, 142, 245, 0))
+            self._glow_effect.setColor(QColor(61, 159, 255, 0))
         super().leaveEvent(event)
 
 
@@ -578,12 +578,13 @@ class MusicFullPage(QWidget):
         layout.setSpacing(20)
         
         # Logo: "♫ Visionary Music" gradient text effect
-        logo = QLabel("♫ Visionary Music")
+        logo = QLabel("◈ VISIONARY MUSIC")
         logo.setStyleSheet(f"""
             QLabel {{
                 color: {_ACCENT};
-                font-size: 22px;
+                font-size: 15px;
                 font-weight: 700;
+                letter-spacing: 2px;
                 background: transparent;
             }}
         """)
@@ -680,7 +681,7 @@ class MusicFullPage(QWidget):
                 background: {_SURFACE2};
                 color: {_TEXT_PRIMARY};
                 border: 1px solid {_GLASS_BORDER};
-                border-radius: 24px;
+                border-radius: 9999px;
                 padding: 12px 20px;
                 text-align: left;
                 font-size: 14px;
@@ -709,12 +710,13 @@ class MusicFullPage(QWidget):
         layout.setSpacing(16)
         
         # Title: "Keşfet"
-        title = QLabel("Keşfet")
+        title = QLabel("◈  Keşfet")
         title.setStyleSheet(f"""
             QLabel {{
-                color: {_TEXT_PRIMARY};
-                font-size: 28px;
+                color: {_ACCENT};
+                font-size: 24px;
                 font-weight: 700;
+                letter-spacing: 1px;
             }}
         """)
         layout.addWidget(title)
@@ -730,7 +732,7 @@ class MusicFullPage(QWidget):
                 background: {_SURFACE2};
                 color: {_TEXT_PRIMARY};
                 border: 1px solid {_GLASS_BORDER};
-                border-radius: 24px;
+                border-radius: 9999px;
                 padding: 14px 24px;
                 font-size: 15px;
             }}
@@ -746,9 +748,9 @@ class MusicFullPage(QWidget):
             QPushButton {{
                 background: qlineargradient(x1:0, x2:1,
                     stop:0 {_GRADIENT_START}, stop:1 {_GRADIENT_END});
-                color: {_TEXT_PRIMARY};
+                color: white;
                 border: none;
-                border-radius: 24px;
+                border-radius: 9999px;
                 padding: 14px 32px;
                 font-size: 15px;
                 font-weight: 600;
@@ -773,7 +775,7 @@ class MusicFullPage(QWidget):
                 background: {_SURFACE2};
                 color: {_TEXT_PRIMARY};
                 border: 1px solid {_GLASS_BORDER};
-                border-radius: 20px;
+                border-radius: 9999px;
                 padding: 10px 20px;
                 font-size: 13px;
             }}
@@ -788,15 +790,15 @@ class MusicFullPage(QWidget):
         self._watch_url_btn.setStyleSheet(f"""
             QPushButton {{
                 background: {_ACCENT_ROSE};
-                color: {_TEXT_PRIMARY};
+                color: white;
                 border: none;
-                border-radius: 20px;
+                border-radius: 9999px;
                 padding: 10px 22px;
                 font-size: 13px;
                 font-weight: 700;
             }}
             QPushButton:hover {{
-                background: #F472B6;
+                background: #FF80AA;
             }}
         """)
         self._watch_url_btn.clicked.connect(self._watch_url)
@@ -806,9 +808,9 @@ class MusicFullPage(QWidget):
         self._play_url_btn.setStyleSheet(f"""
             QPushButton {{
                 background: {_ACCENT};
-                color: {_TEXT_PRIMARY};
+                color: white;
                 border: none;
-                border-radius: 20px;
+                border-radius: 9999px;
                 padding: 10px 20px;
                 font-size: 13px;
                 font-weight: 700;
@@ -824,15 +826,15 @@ class MusicFullPage(QWidget):
         self._download_btn.setStyleSheet(f"""
             QPushButton {{
                 background: {_ACCENT_WARM};
-                color: {_TEXT_PRIMARY};
+                color: white;
                 border: none;
-                border-radius: 20px;
+                border-radius: 9999px;
                 padding: 10px 24px;
                 font-size: 13px;
                 font-weight: 600;
             }}
             QPushButton:hover {{
-                background: #FBBF24;
+                background: #FFB060;
             }}
         """)
         self._download_btn.clicked.connect(self._download_url)
@@ -859,7 +861,7 @@ class MusicFullPage(QWidget):
         
         # Wave visualizer (sabit yükseklik)
         self._wave_widget = _SoftWaveWidget()
-        self._wave_widget.setFixedHeight(24)
+        self._wave_widget.setFixedHeight(32)
         layout.addWidget(self._wave_widget)
         
         # Controls row
@@ -868,14 +870,14 @@ class MusicFullPage(QWidget):
         
         # Large circular play button (gradient bg)
         self._play_btn = QPushButton("▶")
-        self._play_btn.setFixedSize(48, 48)
+        self._play_btn.setFixedSize(52, 52)
         self._play_btn.setStyleSheet(f"""
             QPushButton {{
                 background: qlineargradient(x1:0, x2:1,
                     stop:0 {_GRADIENT_START}, stop:1 {_GRADIENT_END});
-                color: {_TEXT_PRIMARY};
+                color: white;
                 border: none;
-                border-radius: 24px;
+                border-radius: 9999px;
                 font-size: 18px;
                 font-weight: bold;
             }}
@@ -1191,9 +1193,9 @@ class MusicFullPage(QWidget):
             QPushButton {{
                 background: qlineargradient(x1:0, x2:1,
                     stop:0 {_GRADIENT_START}, stop:1 {_GRADIENT_END});
-                color: {_TEXT_PRIMARY};
+                color: white;
                 border: none;
-                border-radius: 20px;
+                border-radius: 9999px;
                 font-size: 16px;
                 font-weight: bold;
             }}
@@ -1210,7 +1212,7 @@ class MusicFullPage(QWidget):
                 background: {_SURFACE2};
                 color: {_TEXT_PRIMARY};
                 border: none;
-                border-radius: 12px;
+                border-radius: 9999px;
                 padding: 8px 12px;
                 font-size: 12px;
             }}
@@ -1399,7 +1401,7 @@ class MusicFullPage(QWidget):
             QFrame {{
                 background: {_CARD_BG};
                 border: 1px solid {_GLASS_BORDER};
-                border-radius: 12px;
+                border-radius: 20px;
             }}
             QFrame:hover {{
                 background: {_CARD_HOVER};
@@ -1419,9 +1421,9 @@ class MusicFullPage(QWidget):
         badge.setStyleSheet(f"""
             QLabel {{
                 background: {_ACCENT};
-                color: {_TEXT_PRIMARY};
-                border-radius: 8px;
-                font-size: 16px;
+                color: white;
+                border-radius: 9999px;
+                font-size: 14px;
                 font-weight: 700;
             }}
         """)
@@ -1462,9 +1464,9 @@ class MusicFullPage(QWidget):
         play_btn.setStyleSheet(f"""
             QPushButton {{
                 background: {_ACCENT};
-                color: {_TEXT_PRIMARY};
+                color: white;
                 border: none;
-                border-radius: 18px;
+                border-radius: 9999px;
                 font-size: 14px;
                 font-weight: bold;
             }}
@@ -1483,7 +1485,7 @@ class MusicFullPage(QWidget):
                 background: {_SURFACE2};
                 color: {_TEXT_PRIMARY};
                 border: 1px solid {_GLASS_BORDER};
-                border-radius: 18px;
+                border-radius: 9999px;
                 font-size: 14px;
             }}
             QPushButton:hover {{
@@ -1502,7 +1504,7 @@ class MusicFullPage(QWidget):
                 background: {_SURFACE2};
                 color: {_TEXT_PRIMARY};
                 border: 1px solid {_GLASS_BORDER};
-                border-radius: 18px;
+                border-radius: 9999px;
                 font-size: 14px;
             }}
             QPushButton:hover {{
@@ -1552,7 +1554,7 @@ class MusicFullPage(QWidget):
             QFrame {{
                 background: {_CARD_BG};
                 border: 1px solid {_GLASS_BORDER};
-                border-radius: 8px;
+                border-radius: 18px;
             }}
             QFrame:hover {{
                 background: {_CARD_HOVER};
@@ -1572,9 +1574,9 @@ class MusicFullPage(QWidget):
         badge.setStyleSheet(f"""
             QLabel {{
                 background: {_ACCENT};
-                color: {_TEXT_PRIMARY};
-                border-radius: 6px;
-                font-size: 13px;
+                color: white;
+                border-radius: 9999px;
+                font-size: 12px;
                 font-weight: 700;
             }}
         """)
@@ -1582,6 +1584,8 @@ class MusicFullPage(QWidget):
         
         # Title
         title = QLabel(filename)
+        title.setWordWrap(False)
+        title.setToolTip(filename)
         title.setStyleSheet(f"""
             QLabel {{
                 color: {_TEXT_PRIMARY};
@@ -1596,9 +1600,9 @@ class MusicFullPage(QWidget):
         play_btn.setStyleSheet(f"""
             QPushButton {{
                 background: {_ACCENT};
-                color: {_TEXT_PRIMARY};
+                color: white;
                 border: none;
-                border-radius: 14px;
+                border-radius: 9999px;
                 font-size: 12px;
                 font-weight: bold;
             }}
@@ -1640,8 +1644,8 @@ class MusicFullPage(QWidget):
                 background: {_CARD_BG};
                 color: {_TEXT_PRIMARY};
                 border: 1px solid {_GLASS_BORDER};
-                border-radius: 8px;
-                padding: 8px 12px;
+                border-radius: 9999px;
+                padding: 8px 16px;
                 text-align: left;
                 font-size: 13px;
             }}
@@ -1967,7 +1971,11 @@ class MusicFullPage(QWidget):
     # ─────────────────────────────────────────────────────────────
     def _update_now_playing(self):
         """Now playing bilgisini güncelle."""
-        self._title_label.setText(self._current_title or "Şarkı seçilmedi")
+        title = self._current_title or "Şarkı seçilmedi"
+        fm = self._title_label.fontMetrics()
+        elided = fm.elidedText(title, Qt.TextElideMode.ElideRight, 380)
+        self._title_label.setText(elided)
+        self._title_label.setToolTip(title)
         
     def _update_progress(self):
         """Progress bar güncelle."""

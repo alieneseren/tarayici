@@ -35,7 +35,6 @@ from PyQt6.QtWidgets import (
 import config
 from ai_logic import AISidebar
 from vision_ar import ARWidget
-from gesture_controller import GestureWidget
 from resource_manager import SmartResourceManager
 from settings_manager import SettingsManager
 from finance_ui import FinanceSidebar
@@ -772,17 +771,6 @@ class VisionaryBrowser(QMainWindow):
         self._music_fab.setGraphicsEffect(shadow_fab)
         self._music_fab.clicked.connect(self._toggle_music_panel)
         self._music_fab.raise_()
-
-        # ── Gesture / Kamera Widget (sol alt — FAB'ın üstü) ──────
-        self._gesture_widget = GestureWidget(central_widget)
-        self._gesture_widget.gesture_closed.connect(self._on_gesture_closed)
-        self._gesture_widget.hide()
-
-        shadow_gesture = QGraphicsDropShadowEffect()
-        shadow_gesture.setBlurRadius(40)
-        shadow_gesture.setColor(QColor(0, 217, 255, 100))
-        shadow_gesture.setOffset(0, 8)
-        self._gesture_widget.setGraphicsEffect(shadow_gesture)
 
         # Müzik Panel (FAB'a tıklayınca açılır)
         self._music_panel = QFrame(central_widget)
@@ -2445,7 +2433,6 @@ class VisionaryBrowser(QMainWindow):
         features_menu.addAction("📊  Finans Terminali", self._open_finance_fullscreen)
         features_menu.addSeparator()
         features_menu.addAction("🥽  AR Sanal Deneme", self._toggle_ar_module)
-        self._gesture_action = features_menu.addAction("✋  Jest Kontrolü", self._toggle_gesture)
         features_menu.addSeparator()
         features_menu.addAction("🎵  Müzik Sayfası", self._open_music_fullscreen)
         features_btn.setMenu(features_menu)
@@ -3664,45 +3651,9 @@ class VisionaryBrowser(QMainWindow):
 
     # ─── AR Modülü ────────────────────────────────────────────────
 
-    # ─── Gesture / Kamera Kontrolü ──────────────────────────────────
-    def _toggle_gesture(self) -> None:
-        """Jest kontrol panelini aç/kapat."""
-        if self._gesture_widget.isVisible():
-            self._gesture_widget.stop_gesture()
-            self._gesture_widget.hide()
-            self._gesture_action.setText("✋  Jest Kontrolü")
-            self.statusBar().showMessage("✋ Jest kontrol kapatıldı", 2000)
-            return
-
-        self._gesture_widget.show()
-        self._gesture_widget.raise_()
-        self._update_gesture_position()
-        self._gesture_widget.start_gesture()
-
-        self._gesture_action.setText("✋  Jest Kontrolü (Aktif)")
-        self.statusBar().showMessage("✋ Jest kontrol aktif — el hareketlerinizi kullanın", 3000)
-
-    def _update_gesture_position(self) -> None:
-        """Gesture widget'ı sol alt köşeye, müzik FAB'ın üstüne konumla."""
-        if not self._gesture_widget:
-            return
-        x = 16
-        y = self.height() - self._gesture_widget.height() - 80 - self.statusBar().height()
-        self._gesture_widget.move(x, y)
-
-    def _on_gesture_closed(self) -> None:
-        """Gesture widget kendi kapatma butonuyla kapanınca."""
-        self._gesture_widget.hide()
-        self._gesture_action.setText("✋  Jest Kontrolü")
-        self.statusBar().showMessage("✋ Jest kontrol kapatıldı", 2000)
-
     def _update_floating_widgets_position(self) -> None:
         """Yüzen adaların konumlarını pencere boyutuna göre günceller."""
-        if hasattr(self, '_gesture_widget') and self._gesture_widget.isVisible():
-            x = 16
-            y = self.height() - self._gesture_widget.height() - 80 - self.statusBar().height()
-            self._gesture_widget.move(x, y)
-            
+        pass
 
 
     def _toggle_ar_module(self) -> None:
