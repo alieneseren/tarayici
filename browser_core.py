@@ -2887,6 +2887,18 @@ class VisionaryBrowser(QMainWindow):
                 tab.navigate_to(url)
             else:
                 tab.setUrl(QUrl(url))
+        else:
+            # Yeni sekme sayfası veya özel sayfa açık — yerine browser sekmesi aç
+            current_idx = self._tab_widget.currentIndex()
+            current_widget = self._tab_widget.widget(current_idx)
+
+            # Özel sayfayı kaldır
+            self._tab_widget.removeTab(current_idx)
+            if current_widget and hasattr(current_widget, 'deleteLater'):
+                current_widget.deleteLater()
+
+            # URL'e gidecek yeni sekme ekle
+            self.add_new_tab(QUrl(url), "Yükleniyor…")
 
     def _navigate_to_url(self) -> None:
         """Adres çubuğundaki URL'ye gider (kısayol uyumluluğu)."""
