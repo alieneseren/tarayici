@@ -153,6 +153,25 @@ class GhostProfile(QWebEngineProfile):
             QWebEngineSettings.WebAttribute.JavascriptCanPaste,
             False  # JS yapıştırma yapamaz
         )
+
+        # ── Video oynatma için gerekli ayarlar ──────────────────
+        # PluginsEnabled olmadan H.264/VP9 codec pipeline başlamaz;
+        # bu durumda video.js Error 102630 (MEDIA_ERR_SRC_NOT_SUPPORTED) verir.
+        settings.setAttribute(
+            QWebEngineSettings.WebAttribute.PluginsEnabled,
+            True
+        )
+        # Kullanıcı etkileşimi olmadan da video oynatılabilsin
+        # (birçok video sitesi autoplay ile başlar)
+        settings.setAttribute(
+            QWebEngineSettings.WebAttribute.PlaybackRequiresUserGesture,
+            False
+        )
+        # JavaScript kesinlikle açık olmalı (video player JS ile kontrol edilir)
+        settings.setAttribute(
+            QWebEngineSettings.WebAttribute.JavascriptEnabled,
+            True
+        )
         
         logger.debug(f"[Ghost] Güvenlik ayarları yapılandırıldı: {self._profile_id}")
         
@@ -163,8 +182,8 @@ class GhostProfile(QWebEngineProfile):
         # NoCache kullanıldığında video oynatıcı veri parçalarını tekrar
         # isteyemez ve MEDIA_ERR_DECODE hatası verir.
         self.setHttpCacheType(QWebEngineProfile.HttpCacheType.MemoryHttpCache)
-        self.setHttpCacheMaximumSize(96 * 1024 * 1024)  # 96 MB RAM cache
-        
+        self.setHttpCacheMaximumSize(128 * 1024 * 1024)  # 128 MB RAM cache
+
         # Persistent storage kapalı (disk'e cookie/session yok)
         self.setPersistentCookiesPolicy(
             QWebEngineProfile.PersistentCookiesPolicy.NoPersistentCookies
@@ -172,6 +191,14 @@ class GhostProfile(QWebEngineProfile):
         
         # Spell check kapalı (diske yazabilir)
         self.setSpellCheckEnabled(False)
+
+        # Standart Chrome UA — video siteleri QtWebEngine UA'sına kısıtlı
+        # codec/format sunabilir; Chromium-tabanlı UA ile H.264/DASH tam destek alır
+        self.setHttpUserAgent(
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/124.0.0.0 Safari/537.36"
+        )
         
         logger.debug(f"[Ghost] Gizlilik ayarları yapılandırıldı: {self._profile_id}")
         
