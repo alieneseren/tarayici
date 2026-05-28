@@ -488,7 +488,37 @@ class MusicFullPage(QWidget):
         if self._download_worker:
             self._download_worker.quit()
             self._download_worker.wait()
-            
+
+    def paintEvent(self, event):
+        """Arka plan: Visionary Music subtle grid + ambient neon glow blobs."""
+        super().paintEvent(event)
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+        # Subtle grid (40px, rgba(255,255,255,0.03))
+        pen = QPen(QColor(255, 255, 255, 8))
+        pen.setWidth(1)
+        painter.setPen(pen)
+        for x in range(0, self.width() + 40, 40):
+            painter.drawLine(x, 0, x, self.height())
+        for y in range(0, self.height() + 40, 40):
+            painter.drawLine(0, y, self.width(), y)
+
+        # Ambient glow — sağ üst (neon yeşil)
+        painter.setPen(Qt.PenStyle.NoPen)
+        grad1 = QRadialGradient(self.width() - 60, -80, 520)
+        grad1.setColorAt(0.0, QColor(0, 255, 65, 13))
+        grad1.setColorAt(1.0, QColor(0, 0, 0, 0))
+        painter.setBrush(QBrush(grad1))
+        painter.drawRect(self.rect())
+
+        # Ambient glow — sol alt (ikincil yeşil)
+        grad2 = QRadialGradient(int(self.width() * 0.2), int(self.height()), 380)
+        grad2.setColorAt(0.0, QColor(114, 254, 143, 13))
+        grad2.setColorAt(1.0, QColor(0, 0, 0, 0))
+        painter.setBrush(QBrush(grad2))
+        painter.drawRect(self.rect())
+
     # ─────────────────────────────────────────────────────────────
     #  UI SETUP
     # ─────────────────────────────────────────────────────────────
@@ -536,15 +566,42 @@ class MusicFullPage(QWidget):
                 border: none;
                 background: transparent;
             }}
+            QScrollBar:vertical {{
+                background: transparent;
+                width: 8px;
+            }}
+            QScrollBar::handle:vertical {{
+                background: {_SURFACE3};
+                border-radius: 4px;
+            }}
+            QScrollBar::handle:vertical:hover {{
+                background: {_ACCENT};
+            }}
+            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
+                height: 0;
+            }}
         """)
         
         self._results_widget = QWidget()
+        self._results_widget.setStyleSheet("background: transparent;")
         self._results_layout = QVBoxLayout(self._results_widget)
-        self._results_layout.setContentsMargins(20, 20, 20, 20)
-        self._results_layout.setSpacing(12)
+        self._results_layout.setContentsMargins(0, 0, 0, 20)
+        self._results_layout.setSpacing(0)
         self._results_layout.addStretch()
         self._results_scroll.setWidget(self._results_widget)
-        self._content_splitter.addWidget(self._results_scroll)
+
+        # Section header (bölüm başlığı + sütun başlıkları) + results scroll sarmalı
+        results_outer = QWidget()
+        results_outer.setStyleSheet("background: transparent;")
+        ro_layout = QVBoxLayout(results_outer)
+        ro_layout.setContentsMargins(0, 0, 0, 0)
+        ro_layout.setSpacing(0)
+
+        self._section_header = self._build_section_header()
+        ro_layout.addWidget(self._section_header)
+        ro_layout.addWidget(self._results_scroll, 1)
+
+        self._content_splitter.addWidget(results_outer)
         
         # Splitter oranları
         self._content_splitter.setStretchFactor(0, 2)  # Video
@@ -727,7 +784,50 @@ class MusicFullPage(QWidget):
             }}
         """)
         layout.addWidget(new_pl_btn)
-        
+
+        # ── Profil alanı (sidebar alt) ────────────────────────
+        layout.addSpacing(14)
+
+        sep = QFrame()
+        sep.setFixedHeight(1)
+        sep.setStyleSheet("background: rgba(255,255,255,0.07); border: none;")
+        layout.addWidget(sep)
+
+        layout.addSpacing(12)
+
+        profile_row = QFrame()
+        profile_row.setStyleSheet("background: transparent;")
+        pr_layout = QHBoxLayout(profile_row)
+        pr_layout.setContentsMargins(24, 0, 16, 0)
+        pr_layout.setSpacing(12)
+
+        avatar = QLabel("VN")
+        avatar.setFixedSize(34, 34)
+        avatar.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        avatar.setStyleSheet(f"""
+            QLabel {{
+                background: {_SURFACE3};
+                color: {_TEXT_PRIMARY};
+                border-radius: 17px;
+                font-size: 11px;
+                font-weight: 800;
+                border: 1px solid rgba(255,255,255,0.1);
+            }}
+        """)
+        pr_layout.addWidget(avatar)
+
+        user_col = QVBoxLayout()
+        user_col.setSpacing(1)
+        user_name_lbl = QLabel("Visionary")
+        user_name_lbl.setStyleSheet(f"color: {_TEXT_PRIMARY}; font-size: 12px; font-weight: 700; background: transparent;")
+        user_col.addWidget(user_name_lbl)
+        user_badge_lbl = QLabel("Pro Member")
+        user_badge_lbl.setStyleSheet(f"color: {_TEXT_TERTIARY}; font-size: 10px; background: transparent;")
+        user_col.addWidget(user_badge_lbl)
+        pr_layout.addLayout(user_col, 1)
+
+        layout.addWidget(profile_row)
+
         return sidebar
         
     def _create_sidebar_nav_btn(self, icon: str, text: str, active: bool = False) -> QPushButton:
@@ -765,6 +865,76 @@ class MusicFullPage(QWidget):
             """)
         return btn
         
+    def _build_section_header(self) -> QWidget:
+        """Bölüm başlığı: dinamik title + sütun başlıkları (# | BAŞLIK | SÜRE)."""
+        frame = QFrame()
+        frame.setStyleSheet(f"""
+            QFrame {{
+                background: transparent;
+                border: none;
+                border-bottom: 1px solid rgba(255,255,255,0.06);
+            }}
+        """)
+        layout = QVBoxLayout(frame)
+        layout.setContentsMargins(24, 16, 24, 12)
+        layout.setSpacing(10)
+
+        # Başlık + TÜMÜNÜ GÖR satırı
+        title_row = QHBoxLayout()
+        self._section_title_label = QLabel("Trend Şarkılar")
+        self._section_title_label.setStyleSheet(f"""
+            QLabel {{
+                color: {_TEXT_PRIMARY};
+                font-size: 22px;
+                font-weight: 700;
+                letter-spacing: -0.3px;
+                background: transparent;
+            }}
+        """)
+        title_row.addWidget(self._section_title_label)
+        title_row.addStretch()
+
+        view_all_lbl = QLabel("TÜMÜNÜ GÖR")
+        view_all_lbl.setStyleSheet(f"""
+            QLabel {{
+                color: {_ACCENT};
+                font-size: 11px;
+                font-weight: 700;
+                letter-spacing: 1px;
+                background: transparent;
+            }}
+        """)
+        title_row.addWidget(view_all_lbl)
+        layout.addLayout(title_row)
+
+        # Sütun başlıkları satırı
+        col_row = QHBoxLayout()
+        col_row.setSpacing(14)
+        col_row.setContentsMargins(20, 0, 16, 0)
+
+        def mk_col(text, fixed_w=None):
+            lbl = QLabel(text)
+            lbl.setStyleSheet(f"""
+                QLabel {{
+                    color: {_TEXT_TERTIARY};
+                    font-size: 11px;
+                    font-weight: 700;
+                    letter-spacing: 1.2px;
+                    background: transparent;
+                }}
+            """)
+            if fixed_w:
+                lbl.setFixedWidth(fixed_w)
+                lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            return lbl
+
+        col_row.addWidget(mk_col("#", 28))
+        col_row.addWidget(mk_col("BAŞLIK"), 1)
+        col_row.addWidget(mk_col("⏱", 80))
+        layout.addLayout(col_row)
+
+        return frame
+
     def _build_search_header(self) -> QWidget:
         """Arama header — Visionary Music browse/keşfet başlığı."""
         header = QFrame()
@@ -948,32 +1118,43 @@ class MusicFullPage(QWidget):
         
         # Albüm thumbnail yeri (placeholder kutu)
         self._thumb_frame = QLabel("♫")
-        self._thumb_frame.setFixedSize(48, 48)
+        self._thumb_frame.setFixedSize(56, 56)
         self._thumb_frame.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._thumb_frame.setStyleSheet(f"""
             QLabel {{
                 background: {_SURFACE2};
                 color: {_ACCENT};
-                border-radius: 6px;
-                font-size: 20px;
+                border-radius: 8px;
+                font-size: 22px;
             }}
         """)
         left_section.addWidget(self._thumb_frame)
-        
+
         info_col = QVBoxLayout()
         info_col.setSpacing(2)
         info_col.setContentsMargins(0, 0, 0, 0)
-        
+
         self._title_label = QLabel("Şarkı seçilmedi")
         self._title_label.setStyleSheet(f"""
             QLabel {{
                 color: {_TEXT_PRIMARY};
                 font-size: 14px;
-                font-weight: 600;
+                font-weight: 700;
                 background: transparent;
             }}
         """)
         info_col.addWidget(self._title_label)
+
+        self._artist_label = QLabel("Visionary Music")
+        self._artist_label.setStyleSheet(f"""
+            QLabel {{
+                color: {_TEXT_TERTIARY};
+                font-size: 11px;
+                font-family: 'Space Mono', monospace;
+                background: transparent;
+            }}
+        """)
+        info_col.addWidget(self._artist_label)
         
         self._time_label = QLabel("0:00 / 0:00")
         self._time_label.setStyleSheet(f"""
@@ -986,7 +1167,25 @@ class MusicFullPage(QWidget):
         info_col.addWidget(self._time_label)
         left_section.addLayout(info_col)
         left_section.addStretch()
-        
+
+        # Beğen butonu (left section sağına)
+        like_btn = QPushButton("♡")
+        like_btn.setFixedSize(30, 30)
+        like_btn.setToolTip("Beğen")
+        like_btn.setStyleSheet(f"""
+            QPushButton {{
+                background: transparent;
+                color: {_TEXT_TERTIARY};
+                border: none;
+                border-radius: 15px;
+                font-size: 15px;
+            }}
+            QPushButton:hover {{
+                color: {_ACCENT};
+            }}
+        """)
+        left_section.addWidget(like_btn)
+
         main_row.addLayout(left_section, 1)
         
         # Orta: Kontroller (shuffle, prev, play, next, repeat)
@@ -1509,6 +1708,8 @@ class MusicFullPage(QWidget):
         
     def _on_search_results(self, items: list):
         """Arama sonuçları geldi."""
+        if hasattr(self, "_section_title_label"):
+            self._section_title_label.setText(f"Arama Sonuçları  ({len(items)} sonuç)")
         self._clear_results()
         for item in items:
             self._add_result_item(item)
@@ -2184,6 +2385,8 @@ class MusicFullPage(QWidget):
     # ─────────────────────────────────────────────────────────────
     def _load_trends(self):
         """Trend şarkılar yükle (örnek listesi)."""
+        if hasattr(self, "_section_title_label"):
+            self._section_title_label.setText("Trend Şarkılar")
         self._clear_results()
         trends = [
             {"title": "Lofi Hip Hop Radio - Beats to Relax/Study", "url": "https://www.youtube.com/watch?v=jfKfPfyJRdk", "duration": 0},
