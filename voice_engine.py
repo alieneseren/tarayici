@@ -1169,6 +1169,8 @@ class WelcomeGreeting:
         self._current_track_title: str = ""
         self._current_track_url: str = ""  # YouTube URL
         self._on_track_changed_cb: Optional[Callable] = None  # (title, url, index) callback
+        # Özel playlist — None ise tüm kütüphane sırası kullanılır
+        self._custom_playlist_indices: Optional[List[int]] = None
 
     def _on_music_error(self, error, error_string=""):
         """Müzik çalma hatalarını logla."""
@@ -1186,15 +1188,36 @@ class WelcomeGreeting:
             if self._playlist_mode and self._music_library:
                 if self._shuffle_mode:
                     import random
-                    count = self._music_library.track_count
-                    if count > 1:
+                    pool = (self._custom_playlist_indices
+                            if self._custom_playlist_indices else
+                            list(range(self._music_library.track_count)))
+                    if len(pool) > 1:
                         next_idx = self._current_track_index
                         while next_idx == self._current_track_index:
-                            next_idx = random.randint(0, count - 1)
+                            next_idx = random.choice(pool)
                     else:
-                        next_idx = 0
+                        next_idx = pool[0]
                     self._play_track_at_index(next_idx)
                     return
+
+                # Özel playlist sırası (örn. bir playlist çalınırken)
+                if self._custom_playlist_indices:
+                    try:
+                        pos = self._custom_playlist_indices.index(self._current_track_index)
+                    except ValueError:
+                        pos = -1
+                    next_pos = pos + 1
+                    if next_pos < len(self._custom_playlist_indices):
+                        self._play_track_at_index(self._custom_playlist_indices[next_pos])
+                        return
+                    elif self._repeat_mode == 1:
+                        self._play_track_at_index(self._custom_playlist_indices[0])
+                        return
+                    else:
+                        self._is_playing = False
+                        return
+
+                # Normal kütüphane sırası
                 next_idx = self._current_track_index + 1
                 if next_idx < self._music_library.track_count:
                     self._play_track_at_index(next_idx)
@@ -1205,7 +1228,6 @@ class WelcomeGreeting:
                     logger.info("Playlist başa döndü (tekrar modu)")
                     return
                 else:
-                    # Playlist bitti, tekrar kapalı — dur
                     self._is_playing = False
                     return
             # Playlist yoksa loop
@@ -1435,22 +1457,47 @@ class WelcomeGreeting:
                 logger.warning(f"Track changed callback hatası: {e}")
 
     def play_next_track(self) -> None:
-        """Sıradaki şarkıya geç."""
+        """Sıradaki şarkıya geç — custom playlist varsa onun sırası kullanılır."""
         if not self._music_library:
             return
-        next_idx = self._current_track_index + 1
-        if next_idx >= self._music_library.track_count:
-            next_idx = 0
-        self._play_track_at_index(next_idx)
+        if self._custom_playlist_indices:
+            try:
+                pos = self._custom_playlist_indices.index(self._current_track_index)
+            except ValueError:
+                pos = -1
+            next_pos = (pos + 1) % len(self._custom_playlist_indices)
+            self._play_track_at_index(self._custom_playlist_indices[next_pos])
+        else:
+            next_idx = self._current_track_index + 1
+            if next_idx >= self._music_library.track_count:
+                next_idx = 0
+            self._play_track_at_index(next_idx)
 
     def play_prev_track(self) -> None:
-        """Önceki şarkıya geç."""
+        """Önceki şarkıya geç — custom playlist varsa onun sırası kullanılır."""
         if not self._music_library:
             return
-        prev_idx = self._current_track_index - 1
-        if prev_idx < 0:
-            prev_idx = max(0, self._music_library.track_count - 1)
-        self._play_track_at_index(prev_idx)
+        if self._custom_playlist_indices:
+            try:
+                pos = self._custom_playlist_indices.index(self._current_track_index)
+            except ValueError:
+                pos = 0
+            prev_pos = (pos - 1) % len(self._custom_playlist_indices)
+            self._play_track_at_index(self._custom_playlist_indices[prev_pos])
+        else:
+            prev_idx = self._current_track_index - 1
+            if prev_idx < 0:
+                prev_idx = max(0, self._music_library.track_count - 1)
+            self._play_track_at_index(prev_idx)
+
+    def set_custom_playlist(self, indices: "List[int]") -> None:
+        """Özel playlist sırası belirle — sadece bu indeksler sırayla çalınır."""
+        self._custom_playlist_indices = list(indices)
+        logger.info(f"Custom playlist ayarlandı: {len(indices)} şarkı")
+
+    def clear_custom_playlist(self) -> None:
+        """Özel playlist'i temizle — normal kütüphane moduna dön."""
+        self._custom_playlist_indices = None
 
     @property
     def current_track_title(self) -> str:

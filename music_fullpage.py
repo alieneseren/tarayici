@@ -1,6 +1,6 @@
 """
 Visionary Navigator — Tam Sayfa Müzik Sayfası
-Profesyonel koyu tema, minimal tasarm, sade mavi vurgu rengi.
+Spotify tabanlı koyu tema, yeşil vurgu rengi.
 YouTube'dan arama, indirme, streaming, gömülü video izleme.
 Video ve arama sonuçları birlikte görünebilir (QSplitter).
 Soft waveform visualizer.
@@ -29,26 +29,26 @@ logger = logging.getLogger("MusicFullPage")
 logger.setLevel(logging.INFO)
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-#  PREMIUM DARK ELEGANT RENK PALETİ
+#  SPOTIFY TABANLI RENK PALETİ
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-_BG = "#07090F"                    # Derin uzay siyahı
-_BG_SECONDARY = "#0C0F1A"          # Lacivert-siyah
-_SURFACE = "#111728"               # Panel yüzeyi
-_SURFACE2 = "#182035"              # Hover yüzeyi
-_SURFACE3 = "#1E2840"              # Kart yüzeyi
-_ACCENT = "#3D9FFF"                # Elektrik mavisi
-_ACCENT_LIGHT = "#70BCFF"          # Açık elektrik mavisi
+_BG = "#121212"                    # Spotify arkaplan
+_BG_SECONDARY = "#181818"          # Spotify ikincil arkaplan
+_SURFACE = "#282828"               # Yükseltilmiş yüzey
+_SURFACE2 = "#333333"              # Hover yüzeyi
+_SURFACE3 = "#404040"              # Kart yüzeyi
+_ACCENT = "#1DB954"                # Spotify yeşili
+_ACCENT_LIGHT = "#1ED760"          # Açık Spotify yeşili
 _ACCENT_WARM = "#FF9A3C"           # Turuncu (indirme)
-_ACCENT_ROSE = "#FF5C8D"           # Pembe (izle)
-_TEXT_PRIMARY = "#DAEEFF"          # Buzlu beyaz
-_TEXT_SECONDARY = "#5A8AB0"        # Mavi-gri
-_TEXT_TERTIARY = "#2E5070"         # Koyu mavi
-_GLASS_BG = "rgba(9,11,22,0.97)"   # Koyu cam
-_GLASS_BORDER = "rgba(61,159,255,0.15)"  # Mavi parlayan sınır
-_CARD_BG = "rgba(14,19,36,0.85)"
-_CARD_HOVER = "rgba(61,159,255,0.07)"
-_GRADIENT_START = "#3D9FFF"        # Mavi gradient başlangıç
-_GRADIENT_END = "#8B5CF6"          # Mor gradient bitiş
+_ACCENT_ROSE = "#E91429"           # Spotify kırmızısı (izle)
+_TEXT_PRIMARY = "#FFFFFF"          # Beyaz
+_TEXT_SECONDARY = "#B3B3B3"        # Açık gri
+_TEXT_TERTIARY = "#727272"         # Orta gri
+_GLASS_BG = "rgba(24,24,24,0.97)" # Spotify koyu cam
+_GLASS_BORDER = "rgba(29,185,84,0.15)"  # Yeşil parlayan sınır
+_CARD_BG = "rgba(40,40,40,0.85)"
+_CARD_HOVER = "rgba(29,185,84,0.07)"
+_GRADIENT_START = "#1DB954"        # Spotify yeşil gradient başlangıç
+_GRADIENT_END = "#148C3F"          # Koyu yeşil gradient bitiş
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -98,12 +98,12 @@ class _SoftWaveWidget(QWidget):
         width = self.width()
         height = self.height()
         
-        # Futuristik elektrik mavisi dalga renk şeması
+        # Spotify yeşil dalga renk şeması
         colors = [
-            QColor(61, 159, 255, 60),   # Electric blue
-            QColor(112, 188, 255, 70),  # Lighter blue
-            QColor(61, 159, 255, 48),   # Electric blue deep
-            QColor(139, 92, 246, 55)    # Purple wave
+            QColor(29, 185, 84, 60),    # Spotify green
+            QColor(30, 215, 96, 70),    # Lighter green
+            QColor(29, 185, 84, 48),    # Spotify green deep
+            QColor(20, 140, 63, 55)     # Dark green wave
         ]
         
         for idx in range(self._num_waves):
@@ -167,8 +167,8 @@ class _AmbiancePulseOverlay(QWidget):
         radius = int(max(w, h) * 0.6)
         
         gradient = QRadialGradient(center_x, center_y, radius)
-        gradient.setColorAt(0.0, QColor(61, 159, 255, int(self._opacity * 90)))
-        gradient.setColorAt(0.5, QColor(61, 159, 255, int(self._opacity * 35)))
+        gradient.setColorAt(0.0, QColor(29, 185, 84, int(self._opacity * 90)))
+        gradient.setColorAt(0.5, QColor(29, 185, 84, int(self._opacity * 35)))
         gradient.setColorAt(1.0, QColor(0, 0, 0, 0))
         
         painter.setBrush(QBrush(gradient))
@@ -208,7 +208,7 @@ class _AestheticButton(QPushButton):
     def _ensure_glow(self):
         if self._glow_effect is None:
             self._glow_effect = QGraphicsDropShadowEffect()
-            self._glow_effect.setColor(QColor(61, 159, 255, 0))
+            self._glow_effect.setColor(QColor(29, 185, 84, 0))
             self._glow_effect.setBlurRadius(26)
             self._glow_effect.setOffset(0, 0)
             self.setGraphicsEffect(self._glow_effect)
@@ -216,12 +216,12 @@ class _AestheticButton(QPushButton):
     def enterEvent(self, event):
         self._ensure_glow()
         if self._glow_effect:
-            self._glow_effect.setColor(QColor(61, 159, 255, 150))
+            self._glow_effect.setColor(QColor(29, 185, 84, 150))
         super().enterEvent(event)
         
     def leaveEvent(self, event):
         if self._glow_effect:
-            self._glow_effect.setColor(QColor(61, 159, 255, 0))
+            self._glow_effect.setColor(QColor(29, 185, 84, 0))
         super().leaveEvent(event)
 
 

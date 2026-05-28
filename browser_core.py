@@ -805,6 +805,9 @@ class VisionaryBrowser(QMainWindow):
         self._yt_video_frame.request_music_pause.connect(self._pip_music_pause)
         self._yt_video_frame.request_music_resume.connect(self._pip_music_resume)
         self._yt_video_frame.hide()
+        # Kullanıcı PiP penceresini kapattığında otomatik yeniden açılmasın
+        self._pip_user_closed = False
+        self._yt_video_frame.on_video_stopped = self._on_video_stopped
 
         self.setCentralWidget(central_widget)
 
@@ -1397,8 +1400,8 @@ class VisionaryBrowser(QMainWindow):
                 self._yt_watch_btn.hide()
         # Kütüphane listesini güncelle (çalan şarkıyı vurgula) — deferred
         QTimer.singleShot(50, self._refresh_library_ui)
-        # YouTube video penceresi — URL varsa göster
-        if url and hasattr(self, '_yt_video_frame'):
+        # YouTube video penceresi — kullanıcı kapattıysa tekrar açma
+        if url and hasattr(self, '_yt_video_frame') and not getattr(self, '_pip_user_closed', False):
             try:
                 self._yt_video_frame.load_video(url, title)
                 # Top-level pencere: ekranın sağ alt köşesine konumlandır
@@ -1410,7 +1413,7 @@ class VisionaryBrowser(QMainWindow):
                     self._yt_video_frame.move(x, y)
             except Exception as e:
                 logger.warning(f"YouTube video yükleme hatası: {e}")
-        elif hasattr(self, '_yt_video_frame'):
+        elif hasattr(self, '_yt_video_frame') and not url:
             self._yt_video_frame.hide()
 
     def _open_youtube_at_position(self) -> None:
@@ -1448,8 +1451,9 @@ class VisionaryBrowser(QMainWindow):
         logger.debug(f"Video başladı (sessiz, ses müzikten): {title}")
 
     def _on_video_stopped(self) -> None:
-        """Video durdu / kapatıldı."""
-        logger.debug("Video durduruldu")
+        """Video durdu / kapatıldı — kullanıcı kapattı bayrağını set et."""
+        self._pip_user_closed = True
+        logger.debug("Video kullanıcı tarafından kapatıldı")
 
     def _pip_music_pause(self) -> None:
         """PiP'te video sesi açıldı — müziği duraklat."""
@@ -2042,17 +2046,33 @@ class VisionaryBrowser(QMainWindow):
             self._pl_layout.insertWidget(i, pl_frame)
 
     def _play_playlist(self, playlist_name: str) -> None:
-        """Playlist'i baştan çal."""
+        """Playlist'i baştan çal — custom playlist modu ile tam sırayı destekler."""
         tracks = self._music_library.get_playlist_tracks(playlist_name)
         if not tracks:
             return
         welcome = getattr(self, '_welcome', None)
-        if welcome:
-            first_idx = tracks[0].get("_lib_index", 0)
-            welcome._play_track_at_index(first_idx)
-            self._play_btn.setText("⏸")
-            if hasattr(self, '_mini_play_btn'):
-                self._mini_play_btn.setText("⏸")
+        if not welcome:
+            from voice_engine import WelcomeGreeting
+            self._welcome = WelcomeGreeting()
+            welcome = self._welcome
+        if not welcome._music_library:
+            welcome.set_library(self._music_library)
+        welcome.set_on_track_changed(self._on_track_changed)
+
+        # Custom playlist sırasını ayarla — bitürince bu sırayla devam eder
+        indices = [t.get("_lib_index", 0) for t in tracks]
+        welcome.set_custom_playlist(indices)
+
+        first_idx = indices[0]
+        welcome._play_track_at_index(first_idx)
+        self._play_btn.setText("⏸")
+        if hasattr(self, '_mini_play_btn'):
+            self._mini_play_btn.setText("⏸")
+        # Mini player göster (panel kapalıysa)
+        panel_open = hasattr(self, '_music_panel') and self._music_panel.isVisible()
+        if hasattr(self, '_mini_player') and not panel_open:
+            self._update_mini_player_position()
+            self._mini_player.show()
 
     def _delete_playlist(self, name: str) -> None:
         self._music_library.delete_playlist(name)
@@ -2227,7 +2247,9 @@ class VisionaryBrowser(QMainWindow):
         self._play_btn.setText("⏸")
         if hasattr(self, '_mini_play_btn'):
             self._mini_play_btn.setText("⏸")
-        if hasattr(self, '_mini_player') and not self._mini_player.isVisible():
+        # Mini player yalnızca panel kapalıyken gösterilir
+        panel_open = hasattr(self, '_music_panel') and self._music_panel.isVisible()
+        if hasattr(self, '_mini_player') and not self._mini_player.isVisible() and not panel_open:
             self._update_mini_player_position()
             self._mini_player.show()
 
@@ -2260,7 +2282,9 @@ class VisionaryBrowser(QMainWindow):
                 welcome.play_stream_url(audio_url, t),
                 self._play_btn.setText("⏸"),
                 self._mini_play_btn.setText("⏸") if hasattr(self, '_mini_play_btn') else None,
-                self._mini_player.show() if hasattr(self, '_mini_player') else None,
+                # Mini player yalnızca panel kapalıyken gösterilir
+                (self._mini_player.show() if not self._music_panel.isVisible() else None)
+                if hasattr(self, '_mini_player') else None,
             )
         )
         self._yt_stream_resolver.error.connect(
