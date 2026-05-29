@@ -1612,8 +1612,14 @@ class MusicFullPage(QWidget):
             f"QPushButton:hover{{color:{_ACCENT_LIGHT};}}"
         )
         def _expand_library():
-            if hasattr(self, '_library_scroll'):
-                self._library_scroll.setMaximumHeight(16777215)
+            if hasattr(self, '_library_scroll') and hasattr(self, '_library_widget'):
+                # İç widget'in gerçek yüksekliğini hesapla
+                full_h = self._library_widget.sizeHint().height() + 16
+                if full_h < 100:  # sizeHint hatalıysa öğe sayısından hesapla
+                    n = max(0, self._library_layout.count() - 1)
+                    full_h = n * 52 + 16
+                self._library_scroll.setMinimumHeight(full_h)
+                self._library_scroll.setMaximumHeight(full_h)
                 self._library_scroll.updateGeometry()
                 act_all.hide()
         act_all.clicked.connect(_expand_library)
@@ -3291,7 +3297,7 @@ class MusicFullPage(QWidget):
         """)
         layout.addWidget(title, 1)
         
-        # Butonlar: Play + (video dosyasıysa) İzle + Sil
+        # Butonlar: Play + Video'da Aç + Sil
         play_btn = QPushButton("▶")
         play_btn.setFixedSize(28, 28)
         play_btn.setToolTip("Dinle")
@@ -3312,28 +3318,27 @@ class MusicFullPage(QWidget):
         play_btn.clicked.connect(lambda: self._play_lib_track(filename))
         layout.addWidget(play_btn)
 
-        # Video dosyası mı?
-        _VIDEO_EXTS = (".mp4", ".mkv", ".webm", ".avi", ".mov", ".m4v",
-                       ".ts", ".mpeg", ".mpg", ".wmv", ".flv", ".3gp")
-        if filename.lower().endswith(_VIDEO_EXTS):
-            watch_btn = QPushButton("�")
-            watch_btn.setFixedSize(28, 28)
-            watch_btn.setToolTip("Büyük Ekranda İzle (Video Sayfası)")
-            watch_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-            watch_btn.setStyleSheet(f"""
-                QPushButton {{
-                    background: rgba(233,20,41,0.7);
-                    color: #fff; border: none;
-                    border-radius: 14px; font-size: 11px;
-                }}
-                QPushButton:hover {{ background: {_ACCENT_ROSE}; }}
-            """)
-            import os as _os
-            fpath = _os.path.join(config.MUSIC_DIR, filename)
-            watch_btn.clicked.connect(
-                lambda checked=False, p=fpath: self._play_local_video(p)
-            )
-            layout.addWidget(watch_btn)
+        # Video'da aç butonu — tüm medyalar için
+        watch_btn = QPushButton("▶ Video")
+        watch_btn.setFixedHeight(28)
+        watch_btn.setToolTip("Video Sayfasında Aç")
+        watch_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        watch_btn.setStyleSheet(f"""
+            QPushButton {{
+                background: rgba(233,20,41,0.75);
+                color: #fff; border: none;
+                border-radius: 7px;
+                font-size: 10px;
+                font-weight: 600;
+                padding: 0 8px;
+            }}
+            QPushButton:hover {{ background: {_ACCENT_ROSE}; }}
+        """)
+        fpath = os.path.join(config.MUSIC_DIR, filename)
+        watch_btn.clicked.connect(
+            lambda checked=False, p=fpath: self._play_local_video(p)
+        )
+        layout.addWidget(watch_btn)
 
         del_btn = QPushButton("🗑")
         del_btn.setFixedSize(24, 24)
