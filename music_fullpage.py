@@ -1462,6 +1462,8 @@ class MusicFullPage(QWidget):
                     ch.widget().deleteLater()
             for i, item in enumerate(items[:10]):
                 self._add_home_trend_row(item, self._home_trends_layout, i + 1)
+        # Up Next listesini de doldur
+        self._refresh_up_next()
 
     def _on_kesfet_trending_ready(self, items: list):
         """Keşfet trending hazır → results alanına yükle (sadece henüz boşsa)."""
@@ -2139,184 +2141,110 @@ class MusicFullPage(QWidget):
         return btn
         
     def _build_video_page(self) -> QWidget:
-        """Video container (başta gizli, video oynarken göster)."""
-        container = QFrame()
-        container.setObjectName("videoDeck")
-        container.setStyleSheet(f"""
-            QFrame#videoDeck {{
-                background: transparent;
-                border: none;
-            }}
-        """)
-        
-        layout = QVBoxLayout(container)
-        layout.setContentsMargins(18, 18, 18, 14)
-        layout.setSpacing(14)
-        
-        # Video header
-        header = QFrame()
-        header.setObjectName("videoHero")
-        header.setStyleSheet(f"""
-            QFrame#videoHero {{
-                background: {_SURFACE};
-                border: 1px solid {_GLASS_BORDER};
-                border-radius: 14px;
-            }}
-        """)
-        header_layout = QHBoxLayout(header)
-        header_layout.setContentsMargins(20, 16, 20, 16)
-        header_layout.setSpacing(16)
-
-        title_col = QVBoxLayout()
-        title_col.setSpacing(4)
-
-        eyebrow = QLabel("VIDEO SUITE")
-        eyebrow.setStyleSheet(f"""
-            QLabel {{
-                color: rgba(241, 245, 249, 0.62);
-                font-size: 10px;
-                font-weight: 700;
-                letter-spacing: 1.6px;
-            }}
-        """)
-        title_col.addWidget(eyebrow)
-
-        self._video_title_label = QLabel("Video salonu hazır")
-        self._video_title_label.setStyleSheet(f"""
-            QLabel {{
-                color: {_TEXT_PRIMARY};
-                font-size: 22px;
-                font-weight: 700;
-            }}
-        """)
-        title_col.addWidget(self._video_title_label)
-
-        self._video_meta_label = QLabel("Bir video seçtiğinizde oynatıcı, kalite bilgisi ve hızlı kontroller burada görünür.")
-        self._video_meta_label.setWordWrap(True)
-        self._video_meta_label.setStyleSheet(f"""
-            QLabel {{
-                color: {_TEXT_SECONDARY};
-                font-size: 12px;
-                padding-right: 12px;
-            }}
-        """)
-        title_col.addWidget(self._video_meta_label)
-
-        header_layout.addLayout(title_col, 1)
-
-        side_col = QVBoxLayout()
-        side_col.setSpacing(10)
-        side_col.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-
-        self._video_status_badge = QLabel()
-        self._video_status_badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._video_status_badge.setMinimumWidth(104)
-        side_col.addWidget(self._video_status_badge, 0, Qt.AlignmentFlag.AlignRight)
-
-        actions = QHBoxLayout()
-        actions.setSpacing(10)
-
-        pill_button = f"""
+        """Video izleme sayfası — stitch 'Video Watch' tasarımı (8/12 + 4/12)."""
+        # ── Shared button style helpers ──
+        _pill = f"""
             QPushButton {{
-                background: rgba(255,255,255,0.08);
+                background: rgba(255,255,255,0.07);
                 color: {_TEXT_PRIMARY};
-                border: 1px solid rgba(255,255,255,0.08);
-                border-radius: 14px;
-                padding: 10px 14px;
+                border: 1px solid rgba(255,255,255,0.10);
+                border-radius: 8px;
+                padding: 6px 11px;
                 font-size: 12px;
-                font-weight: 600;
             }}
             QPushButton:hover {{
                 background: rgba(255,255,255,0.14);
-                border: 1px solid rgba(255,255,255,0.16);
+                border-color: rgba(255,255,255,0.22);
             }}
             QPushButton:disabled {{
-                color: rgba(241,245,249,0.35);
-                background: rgba(255,255,255,0.04);
-                border: 1px solid rgba(255,255,255,0.04);
+                color: rgba(229,226,225,0.30);
+                background: rgba(255,255,255,0.03);
+                border-color: rgba(255,255,255,0.05);
             }}
         """
-        
-        # Back button
-        self._video_back_btn = QPushButton("Kapat")
-        self._video_back_btn.setStyleSheet(pill_button)
-        self._video_back_btn.clicked.connect(self._close_video)
-        actions.addWidget(self._video_back_btn)
-        
-        # Minimize button
-        self._video_minimize_btn = QPushButton("Küçült")
-        self._video_minimize_btn.setStyleSheet(pill_button)
-        self._video_minimize_btn.clicked.connect(self._minimize_video)
-        actions.addWidget(self._video_minimize_btn)
-        
-        self._video_browser_btn = QPushButton("Tarayıcıda İzle")
-        self._video_browser_btn.setStyleSheet(f"""
-            QPushButton {{
-                background: qlineargradient(x1:0, x2:1,
-                    stop:0 {_GRADIENT_START}, stop:1 {_GRADIENT_END});
-                color: {_TEXT_PRIMARY};
-                border: none;
-                border-radius: 14px;
-                padding: 10px 16px;
-                font-size: 12px;
-                font-weight: 600;
-            }}
-            QPushButton:hover {{
-                background: {_ACCENT_LIGHT};
-            }}
-            QPushButton:disabled {{
-                color: rgba(241,245,249,0.35);
-                background: rgba(255,255,255,0.08);
-            }}
-        """)
-        self._video_browser_btn.clicked.connect(self._open_video_in_browser)
-        self._video_browser_btn.setEnabled(False)
-        actions.addWidget(self._video_browser_btn)
 
-        side_col.addLayout(actions)
-        header_layout.addLayout(side_col)
-        
-        layout.addWidget(header)
+        container = QFrame()
+        container.setObjectName("videoDeck")
+        container.setStyleSheet("QFrame#videoDeck { background: transparent; border: none; }")
+
+        root = QHBoxLayout(container)
+        root.setContentsMargins(0, 0, 0, 0)
+        root.setSpacing(0)
+
+        # ════════════════════════════════════════════════════════
+        # LEFT COLUMN — video player + metadata
+        # ════════════════════════════════════════════════════════
+        left_scroll = QScrollArea()
+        left_scroll.setWidgetResizable(True)
+        left_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        left_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        left_scroll.setStyleSheet("""
+            QScrollArea { background: transparent; border: none; }
+            QScrollBar:vertical { width: 5px; background: transparent; }
+            QScrollBar::handle:vertical {
+                background: rgba(255,255,255,0.12); border-radius: 3px;
+            }
+        """)
+
+        left_widget = QFrame()
+        left_widget.setStyleSheet("background: transparent; border: none;")
+        left_layout = QVBoxLayout(left_widget)
+        left_layout.setContentsMargins(20, 16, 12, 20)
+        left_layout.setSpacing(14)
+
+        # ── 1. Ambient glow wrapper + video stage ──
+        glow_frame = QFrame()
+        glow_frame.setObjectName("videoGlow")
+        glow_frame.setStyleSheet("""
+            QFrame#videoGlow {
+                background: rgba(0,255,65,0.05);
+                border: 1px solid rgba(0,255,65,0.20);
+                border-radius: 16px;
+            }
+        """)
+        glow_vl = QVBoxLayout(glow_frame)
+        glow_vl.setContentsMargins(0, 0, 0, 0)
+        glow_vl.setSpacing(0)
 
         self._video_stage = QFrame()
         self._video_stage.setObjectName("videoStage")
-        self._video_stage.setStyleSheet(f"""
-            QFrame#videoStage {{
-                background: #0A0A0A;
-                border: 1px solid {_GLASS_BORDER};
-                border-radius: 16px;
-            }}
-        """)
-        stage_layout = QVBoxLayout(self._video_stage)
-        stage_layout.setContentsMargins(10, 10, 10, 10)
-        stage_layout.setSpacing(0)
-        self._video_widget.setMinimumHeight(320)
-        self._video_widget.setStyleSheet("background: #05070C; border-radius: 18px;")
-        stage_layout.addWidget(self._video_widget, 1)
-        
-        layout.addWidget(self._video_stage, 1)
-        
-        # Video control bar (frosted glass)
-        control_bar = QFrame()
-        control_bar.setObjectName("videoControls")
-        control_bar.setStyleSheet(f"""
-            QFrame#videoControls {{
-                background: {_GLASS_BG};
-                border: 1px solid {_GLASS_BORDER};
+        self._video_stage.setStyleSheet("""
+            QFrame#videoStage {
+                background: #000000;
                 border-radius: 14px;
+            }
+        """)
+        stage_vl = QVBoxLayout(self._video_stage)
+        stage_vl.setContentsMargins(0, 0, 0, 0)
+        stage_vl.setSpacing(0)
+        self._video_widget.setMinimumHeight(360)
+        self._video_widget.setStyleSheet("background: #000; border-radius: 14px;")
+        stage_vl.addWidget(self._video_widget, 1)
+
+        glow_vl.addWidget(self._video_stage)
+        left_layout.addWidget(glow_frame, 1)
+
+        # ── 2. Control bar ──
+        ctrl_frame = QFrame()
+        ctrl_frame.setObjectName("vidCtrl")
+        ctrl_frame.setStyleSheet(f"""
+            QFrame#vidCtrl {{
+                background: rgba(18,18,18,0.88);
+                border: 1px solid rgba(0,255,65,0.14);
+                border-radius: 12px;
             }}
         """)
-        control_layout = QVBoxLayout(control_bar)
-        control_layout.setContentsMargins(18, 14, 18, 14)
-        control_layout.setSpacing(10)
-        
-        # Seek bar
+        ctrl_vl = QVBoxLayout(ctrl_frame)
+        ctrl_vl.setContentsMargins(16, 10, 16, 10)
+        ctrl_vl.setSpacing(8)
+
+        # Seek slider
         self._vid_progress = QSlider(Qt.Orientation.Horizontal)
         self._vid_progress.setRange(0, 1000)
         self._vid_progress.setStyleSheet(f"""
             QSlider::groove:horizontal {{
-                background: {_SURFACE2};
-                height: 6px;
+                background: rgba(255,255,255,0.10);
+                height: 5px;
                 border-radius: 3px;
             }}
             QSlider::handle:horizontal {{
@@ -2324,101 +2252,66 @@ class MusicFullPage(QWidget):
                 width: 14px;
                 height: 14px;
                 border-radius: 7px;
-                margin: -4px 0;
+                margin: -5px 0;
             }}
             QSlider::sub-page:horizontal {{
-                background: qlineargradient(x1:0, x2:1,
-                    stop:0 {_GRADIENT_START}, stop:1 {_GRADIENT_END});
+                background: {_ACCENT};
                 border-radius: 3px;
             }}
         """)
         self._vid_progress.sliderPressed.connect(lambda: setattr(self, "_is_seeking", True))
         self._vid_progress.sliderReleased.connect(self._vid_on_seek_end)
-        control_layout.addWidget(self._vid_progress)
-        
-        # Buttons
-        buttons_row = QHBoxLayout()
-        buttons_row.setSpacing(12)
-        
+        ctrl_vl.addWidget(self._vid_progress)
+
+        # Button row
+        btn_row = QHBoxLayout()
+        btn_row.setSpacing(8)
+
         self._vid_play_btn = QPushButton("▶")
         self._vid_play_btn.setFixedSize(40, 40)
         self._vid_play_btn.setStyleSheet(f"""
             QPushButton {{
-                background: qlineargradient(x1:0, x2:1,
-                    stop:0 {_GRADIENT_START}, stop:1 {_GRADIENT_END});
-                color: white;
+                background: {_ACCENT};
+                color: #000;
                 border: none;
-                border-radius: 9999px;
+                border-radius: 20px;
                 font-size: 16px;
                 font-weight: bold;
             }}
-            QPushButton:hover {{
-                background: {_ACCENT_LIGHT};
-            }}
+            QPushButton:hover {{ background: {_ACCENT_LIGHT}; }}
         """)
         self._vid_play_btn.clicked.connect(self._vid_toggle_play)
-        buttons_row.addWidget(self._vid_play_btn)
-        
+        btn_row.addWidget(self._vid_play_btn)
+
         self._vid_back_btn = QPushButton("⏪ -10s")
-        self._vid_back_btn.setStyleSheet(f"""
-            QPushButton {{
-                background: {_SURFACE2};
-                color: {_TEXT_PRIMARY};
-                border: none;
-                border-radius: 9999px;
-                padding: 8px 12px;
-                font-size: 12px;
-            }}
-            QPushButton:hover {{
-                background: {_SURFACE3};
-            }}
-        """)
+        self._vid_back_btn.setStyleSheet(_pill)
         self._vid_back_btn.clicked.connect(lambda: self._vid_seek_rel(-10000))
-        buttons_row.addWidget(self._vid_back_btn)
-        
+        btn_row.addWidget(self._vid_back_btn)
+
         self._vid_fwd_btn = QPushButton("+10s ⏩")
-        self._vid_fwd_btn.setStyleSheet(f"""
-            QPushButton {{
-                background: {_SURFACE2};
-                color: {_TEXT_PRIMARY};
-                border: none;
-                border-radius: 12px;
-                padding: 8px 12px;
-                font-size: 12px;
-            }}
-            QPushButton:hover {{
-                background: {_SURFACE3};
-            }}
-        """)
+        self._vid_fwd_btn.setStyleSheet(_pill)
         self._vid_fwd_btn.clicked.connect(lambda: self._vid_seek_rel(10000))
-        buttons_row.addWidget(self._vid_fwd_btn)
-        
+        btn_row.addWidget(self._vid_fwd_btn)
+
         self._vid_time_label = QLabel("0:00 / 0:00")
-        self._vid_time_label.setStyleSheet(f"""
-            QLabel {{
-                color: {_TEXT_SECONDARY};
-                font-size: 13px;
-            }}
-        """)
-        buttons_row.addWidget(self._vid_time_label)
-        
-        buttons_row.addStretch()
-        
+        self._vid_time_label.setStyleSheet(f"color: {_TEXT_SECONDARY}; font-size: 12px;")
+        btn_row.addWidget(self._vid_time_label)
+
+        btn_row.addStretch()
+
         self._vid_speed_combo = QComboBox()
         self._vid_speed_combo.addItems(["0.5x", "0.75x", "1.0x", "1.25x", "1.5x", "2.0x"])
         self._vid_speed_combo.setCurrentIndex(2)
         self._vid_speed_combo.setStyleSheet(f"""
             QComboBox {{
-                background: {_SURFACE2};
+                background: rgba(255,255,255,0.07);
                 color: {_TEXT_PRIMARY};
-                border: 1px solid {_GLASS_BORDER};
+                border: 1px solid rgba(255,255,255,0.10);
                 border-radius: 8px;
-                padding: 6px 10px;
+                padding: 5px 10px;
                 font-size: 12px;
             }}
-            QComboBox::drop-down {{
-                border: none;
-            }}
+            QComboBox::drop-down {{ border: none; }}
             QComboBox QAbstractItemView {{
                 background: {_SURFACE2};
                 color: {_TEXT_PRIMARY};
@@ -2426,40 +2319,261 @@ class MusicFullPage(QWidget):
             }}
         """)
         self._vid_speed_combo.currentTextChanged.connect(self._vid_set_speed)
-        buttons_row.addWidget(self._vid_speed_combo)
-        
+        btn_row.addWidget(self._vid_speed_combo)
+
         self._vid_fullscreen_btn = QPushButton("⛶ Tam Ekran")
-        self._vid_fullscreen_btn.setStyleSheet(f"""
+        self._vid_fullscreen_btn.setStyleSheet(_pill)
+        self._vid_fullscreen_btn.clicked.connect(self._vid_toggle_fullscreen)
+        btn_row.addWidget(self._vid_fullscreen_btn)
+
+        # Status badge (compact, inline)
+        self._video_status_badge = QLabel("BEKLEMEDE")
+        self._video_status_badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._video_status_badge.setMinimumWidth(90)
+        self._video_status_badge.setStyleSheet("""
+            QLabel {
+                background: rgba(148,163,184,0.16);
+                color: #CBD5E1;
+                border: 1px solid rgba(148,163,184,0.22);
+                border-radius: 10px;
+                padding: 4px 10px;
+                font-size: 10px;
+                font-weight: 700;
+                letter-spacing: 0.8px;
+            }
+        """)
+        btn_row.addWidget(self._video_status_badge)
+
+        self._video_browser_btn = QPushButton("🌐 Tarayıcıda")
+        self._video_browser_btn.setEnabled(False)
+        self._video_browser_btn.setStyleSheet(f"""
             QPushButton {{
-                background: {_SURFACE2};
+                background: rgba(0,255,65,0.10);
+                color: {_ACCENT};
+                border: 1px solid rgba(0,255,65,0.28);
+                border-radius: 8px;
+                padding: 6px 11px;
+                font-size: 12px;
+            }}
+            QPushButton:hover {{ background: rgba(0,255,65,0.20); }}
+            QPushButton:disabled {{
+                color: rgba(0,255,65,0.30);
+                background: rgba(0,255,65,0.04);
+                border-color: rgba(0,255,65,0.08);
+            }}
+        """)
+        self._video_browser_btn.clicked.connect(self._open_video_in_browser)
+        btn_row.addWidget(self._video_browser_btn)
+
+        self._video_minimize_btn = QPushButton("⬇ Küçült")
+        self._video_minimize_btn.setStyleSheet(_pill)
+        self._video_minimize_btn.clicked.connect(self._minimize_video)
+        btn_row.addWidget(self._video_minimize_btn)
+
+        self._video_back_btn = QPushButton("✕ Kapat")
+        self._video_back_btn.setStyleSheet(f"""
+            QPushButton {{
+                background: rgba(255,255,255,0.07);
                 color: {_TEXT_PRIMARY};
-                border: none;
-                border-radius: 12px;
-                padding: 8px 12px;
+                border: 1px solid rgba(255,255,255,0.10);
+                border-radius: 8px;
+                padding: 6px 11px;
                 font-size: 12px;
             }}
             QPushButton:hover {{
-                background: {_SURFACE3};
+                background: rgba(220,50,50,0.22);
+                border-color: rgba(220,50,50,0.40);
             }}
         """)
-        self._vid_fullscreen_btn.clicked.connect(self._vid_toggle_fullscreen)
-        buttons_row.addWidget(self._vid_fullscreen_btn)
-        
-        control_layout.addLayout(buttons_row)
-        
-        layout.addWidget(control_bar)
-        
-        # Video player signals
+        self._video_back_btn.clicked.connect(self._close_video)
+        btn_row.addWidget(self._video_back_btn)
+
+        ctrl_vl.addLayout(btn_row)
+        left_layout.addWidget(ctrl_frame)
+
+        # ── 3. Title + meta ──
+        title_frame = QFrame()
+        title_frame.setStyleSheet("background: transparent; border: none;")
+        title_fl = QVBoxLayout(title_frame)
+        title_fl.setContentsMargins(4, 0, 4, 0)
+        title_fl.setSpacing(5)
+
+        self._video_title_label = QLabel("Video hazır bekleniyor")
+        self._video_title_label.setWordWrap(True)
+        self._video_title_label.setStyleSheet(f"""
+            QLabel {{
+                color: {_TEXT_PRIMARY};
+                font-size: 20px;
+                font-weight: 700;
+                letter-spacing: -0.3px;
+            }}
+        """)
+        title_fl.addWidget(self._video_title_label)
+
+        self._video_meta_label = QLabel("Bir video seçildiğinde bilgiler burada görünür.")
+        self._video_meta_label.setWordWrap(True)
+        self._video_meta_label.setStyleSheet(
+            f"color: {_TEXT_SECONDARY}; font-size: 13px;"
+        )
+        title_fl.addWidget(self._video_meta_label)
+        left_layout.addWidget(title_frame)
+
+        # ── 4. Channel row + action buttons ──
+        ch_frame = QFrame()
+        ch_frame.setStyleSheet("background: transparent; border: none;")
+        ch_hl = QHBoxLayout(ch_frame)
+        ch_hl.setContentsMargins(4, 0, 4, 0)
+        ch_hl.setSpacing(12)
+
+        ch_avatar = QLabel("♪")
+        ch_avatar.setFixedSize(44, 44)
+        ch_avatar.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        ch_avatar.setStyleSheet(f"""
+            QLabel {{
+                background: {_SURFACE2};
+                border: 2px solid rgba(0,255,65,0.28);
+                border-radius: 22px;
+                color: {_TEXT_SECONDARY};
+                font-size: 20px;
+            }}
+        """)
+        ch_hl.addWidget(ch_avatar)
+
+        ch_info_vl = QVBoxLayout()
+        ch_info_vl.setSpacing(1)
+        self._vid_channel_label = QLabel("YouTube")
+        self._vid_channel_label.setStyleSheet(
+            f"color: {_TEXT_PRIMARY}; font-size: 14px; font-weight: 600;"
+        )
+        ch_info_vl.addWidget(self._vid_channel_label)
+        ch_src_label = QLabel("youtube.com")
+        ch_src_label.setStyleSheet(f"color: {_TEXT_TERTIARY}; font-size: 11px;")
+        ch_info_vl.addWidget(ch_src_label)
+        ch_hl.addLayout(ch_info_vl)
+
+        ch_hl.addStretch()
+
+        _action_btn_ss = f"""
+            QPushButton {{
+                background: rgba(255,255,255,0.06);
+                color: {_TEXT_PRIMARY};
+                border: 1px solid rgba(255,255,255,0.10);
+                border-radius: 18px;
+                padding: 7px 14px;
+                font-size: 12px;
+                font-weight: 500;
+            }}
+            QPushButton:hover {{
+                background: rgba(255,255,255,0.12);
+                border-color: rgba(255,255,255,0.22);
+            }}
+        """
+        for icon_lbl in [("👍", "Beğen"), ("🔗", "Paylaş"), ("⬇", "İndir")]:
+            ab = QPushButton(f"{icon_lbl[0]}  {icon_lbl[1]}")
+            ab.setStyleSheet(_action_btn_ss)
+            ch_hl.addWidget(ab)
+
+        left_layout.addWidget(ch_frame)
+
+        # ── 5. Glassmorphic description ──
+        desc_frame = QFrame()
+        desc_frame.setObjectName("vidDesc")
+        desc_frame.setStyleSheet("""
+            QFrame#vidDesc {
+                background: rgba(255,255,255,0.03);
+                border: 1px solid rgba(255,255,255,0.06);
+                border-radius: 12px;
+            }
+        """)
+        desc_vl = QVBoxLayout(desc_frame)
+        desc_vl.setContentsMargins(16, 12, 16, 12)
+        desc_vl.setSpacing(6)
+
+        self._video_desc_label = QLabel("Video açıklaması yüklenecek…")
+        self._video_desc_label.setWordWrap(True)
+        self._video_desc_label.setStyleSheet(
+            f"color: {_TEXT_TERTIARY}; font-size: 13px; line-height: 1.5;"
+        )
+        desc_vl.addWidget(self._video_desc_label)
+        left_layout.addWidget(desc_frame)
+
+        left_layout.addStretch()
+        left_scroll.setWidget(left_widget)
+        root.addWidget(left_scroll, 63)
+
+        # ════════════════════════════════════════════════════════
+        # RIGHT COLUMN — Sıradaki / Up Next
+        # ════════════════════════════════════════════════════════
+        right_frame = QFrame()
+        right_frame.setObjectName("upNextPanel")
+        right_frame.setStyleSheet(f"""
+            QFrame#upNextPanel {{
+                background: rgba(255,255,255,0.02);
+                border-left: 1px solid rgba(255,255,255,0.07);
+            }}
+        """)
+        right_vl = QVBoxLayout(right_frame)
+        right_vl.setContentsMargins(14, 16, 14, 16)
+        right_vl.setSpacing(10)
+
+        # Header
+        rh = QHBoxLayout()
+        rh_title = QLabel("Sıradaki")
+        rh_title.setStyleSheet(
+            f"color: {_TEXT_PRIMARY}; font-size: 15px; font-weight: 700;"
+        )
+        rh.addWidget(rh_title)
+        rh.addStretch()
+        ap_lbl = QLabel("Otomatik Oynat")
+        ap_lbl.setStyleSheet(f"color: {_TEXT_TERTIARY}; font-size: 11px;")
+        rh.addWidget(ap_lbl)
+        ap_dot = QLabel("●")
+        ap_dot.setStyleSheet(f"color: {_ACCENT}; font-size: 11px;")
+        rh.addWidget(ap_dot)
+        right_vl.addLayout(rh)
+
+        # Scroll list
+        up_next_scroll = QScrollArea()
+        up_next_scroll.setWidgetResizable(True)
+        up_next_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        up_next_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        up_next_scroll.setStyleSheet("""
+            QScrollArea { background: transparent; border: none; }
+            QScrollBar:vertical { width: 4px; background: transparent; }
+            QScrollBar::handle:vertical {
+                background: rgba(255,255,255,0.10); border-radius: 2px;
+            }
+        """)
+
+        up_next_widget = QFrame()
+        up_next_widget.setStyleSheet("background: transparent; border: none;")
+        self._up_next_layout = QVBoxLayout(up_next_widget)
+        self._up_next_layout.setContentsMargins(0, 0, 0, 0)
+        self._up_next_layout.setSpacing(2)
+
+        # Placeholder
+        ph = QLabel("Trending yükleniyor…")
+        ph.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        ph.setStyleSheet(f"color: {_TEXT_TERTIARY}; font-size: 12px; padding: 20px 0;")
+        self._up_next_layout.addWidget(ph)
+        self._up_next_layout.addStretch()
+
+        up_next_scroll.setWidget(up_next_widget)
+        right_vl.addWidget(up_next_scroll, 1)
+
+        root.addWidget(right_frame, 37)
+
+        # Player signals
         self._video_player.positionChanged.connect(self._vid_on_position_changed)
         self._video_player.durationChanged.connect(self._vid_on_duration_changed)
         self._video_player.playbackStateChanged.connect(self._on_video_state_changed)
 
         self._set_video_panel_state(
             "BEKLEMEDE",
-            "Bir video acildiginda oynatma kontrolleri ve kalite bilgisi burada guncellenir.",
+            "Bir video seçildiğinde oynatma başlar.",
             "idle",
         )
-        
+
         return container
 
     def _set_video_panel_state(self, status: str, detail: str, tone: str = "idle") -> None:
@@ -2485,7 +2599,101 @@ class MusicFullPage(QWidget):
             }}
         """)
         self._video_meta_label.setText(detail)
-        
+
+    # ── Up Next helpers ──────────────────────────────────────────
+    def _refresh_up_next(self) -> None:
+        """_up_next_layout'u _trending_items ile doldur."""
+        if not hasattr(self, "_up_next_layout"):
+            return
+        items = getattr(self, "_trending_items", [])
+        if not items:
+            return
+        # Temizle (stretch hariç)
+        while self._up_next_layout.count() > 1:
+            item = self._up_next_layout.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+        for i, it in enumerate(items[:12]):
+            card = self._build_up_next_card(it, i)
+            self._up_next_layout.insertWidget(self._up_next_layout.count() - 1, card)
+
+    def _build_up_next_card(self, item: dict, idx: int) -> QFrame:
+        """160px thumbnail + başlık + kanal satırı (stitch 'Up Next' kartı)."""
+        url = item.get("url", "")
+        title = item.get("title", "—")
+        uploader = item.get("uploader", "")
+        views = item.get("view_count", 0)
+        views_str = f"{views:,} görüntüleme" if views else ""
+
+        card = QFrame()
+        card.setFixedHeight(72)
+        card.setCursor(Qt.CursorShape.PointingHandCursor)
+        card.setStyleSheet(f"""
+            QFrame {{
+                background: transparent;
+                border: none;
+                border-radius: 8px;
+            }}
+            QFrame:hover {{
+                background: rgba(255,255,255,0.05);
+            }}
+        """)
+        hl = QHBoxLayout(card)
+        hl.setContentsMargins(6, 5, 6, 5)
+        hl.setSpacing(10)
+
+        # Thumbnail
+        thumb = QLabel()
+        thumb.setFixedSize(114, 64)
+        thumb.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        thumb.setStyleSheet(f"""
+            QLabel {{
+                background: {_SURFACE2};
+                border: 1px solid rgba(255,255,255,0.07);
+                border-radius: 6px;
+                color: {_TEXT_TERTIARY};
+                font-size: 20px;
+            }}
+        """)
+        thumb.setText("▶")
+        if item.get("thumbnail"):
+            self._fetch_thumbnail(thumb, item["thumbnail"], size=(114, 64))
+        hl.addWidget(thumb)
+
+        # Duration badge (overlay not possible in QLabel easily, skip)
+
+        # Text
+        info = QVBoxLayout()
+        info.setSpacing(2)
+
+        t_lbl = QLabel(title)
+        t_lbl.setWordWrap(False)
+        t_lbl.setMaximumWidth(180)
+        t_lbl.setStyleSheet(
+            f"color: {_TEXT_PRIMARY}; font-size: 12px; font-weight: 600;"
+        )
+        # Truncate with elide
+        metrics = t_lbl.fontMetrics()
+        t_lbl.setText(metrics.elidedText(title, Qt.TextElideMode.ElideRight, 178))
+        info.addWidget(t_lbl)
+
+        if uploader:
+            ch_lbl = QLabel(uploader)
+            ch_lbl.setStyleSheet(f"color: {_TEXT_TERTIARY}; font-size: 11px;")
+            info.addWidget(ch_lbl)
+        if views_str:
+            v_lbl = QLabel(views_str)
+            v_lbl.setStyleSheet(f"color: {_TEXT_TERTIARY}; font-size: 10px; opacity: 0.7;")
+            info.addWidget(v_lbl)
+
+        hl.addLayout(info, 1)
+
+        # Click → watch
+        if url:
+            card.mousePressEvent = lambda e, u=url: self._watch_video_url(u)  # type: ignore[assignment]
+
+        return card
+
     def _create_nav_icon_button(self, icon: str) -> QPushButton:
         """Icon-only circular button."""
         btn = QPushButton(icon)
@@ -3044,9 +3252,18 @@ class MusicFullPage(QWidget):
         self._current_url = self._pending_video_url or url
         self._is_video_mode = True
         self._video_title_label.setText(title)
+        # Kanal label'ını güncelle (uploader bilgisi pending URL'den eşleştir)
+        if hasattr(self, "_vid_channel_label"):
+            matched = next(
+                (it for it in getattr(self, "_trending_items", [])
+                 if it.get("title", "") == title),
+                None,
+            )
+            if matched and matched.get("uploader"):
+                self._vid_channel_label.setText(matched["uploader"])
         self._set_video_panel_state(
             "CANLI",
-            f"{fmt} hazir. Isterseniz videoyu tarayicida orijinal sayfasinda da acabilirsiniz.",
+            f"{fmt} hazır. İsterseniz videoyu tarayıcıda orijinal sayfasında da açabilirsiniz.",
             "live",
         )
         
