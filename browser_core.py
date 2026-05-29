@@ -15,7 +15,8 @@ import urllib.request
 
 from PyQt6.QtCore import (
     Qt, QUrl, pyqtSlot, pyqtSignal, QObject, QSize, QTimer, QThread,
-    QPropertyAnimation, QEasingCurve, QParallelAnimationGroup
+    QPropertyAnimation, QEasingCurve, QParallelAnimationGroup,
+    QEvent, QPoint, QRect
 )
 from PyQt6.QtGui import (
     QIcon, QAction, QKeySequence, QFont, QFontDatabase, QPixmap, QColor
@@ -1285,6 +1286,9 @@ class VisionaryBrowser(QMainWindow):
 
         self._refresh_library_ui()
 
+        # Müzik paneli dışına tıklanınca kapanması için event filter kur
+        QApplication.instance().installEventFilter(self)
+
     # ── Müzik Panel Sekmeler ──────────────────────────────────
 
     def _setup_mini_player(self) -> None:
@@ -1396,8 +1400,14 @@ class VisionaryBrowser(QMainWindow):
         self._play_btn.setText("⏸")
         if hasattr(self, '_mini_play_btn'):
             self._mini_play_btn.setText("⏸")
-        # Mini player'ı göster (müzik paneli kapalıysa)
-        if not getattr(self, '_music_panel', None) or not self._music_panel.isVisible():
+        # Mini player'ı göster — müzik paneli ve MusicFullPage kapalıysa
+        music_fp = getattr(self, '_music_fullpage', None)
+        fp_active = (
+            music_fp is not None
+            and hasattr(self, '_tab_widget')
+            and self._tab_widget.currentWidget() is music_fp
+        )
+        if not fp_active and (not getattr(self, '_music_panel', None) or not self._music_panel.isVisible()):
             self._mini_player.show()
             # Müzik çalarken FAB butonunu gizle (mini player ile çakışma)
             if hasattr(self, '_music_fab'):
@@ -3983,6 +3993,25 @@ class VisionaryBrowser(QMainWindow):
                 widget.deleteLater()
 
         event.accept()
+
+    def eventFilter(self, obj, event) -> bool:
+        """Müzik paneli dışına tıklanınca paneli kapat."""
+        if event.type() == QEvent.Type.MouseButtonPress:
+            panel = getattr(self, '_music_panel', None)
+            if panel and panel.isVisible():
+                try:
+                    global_pos = event.globalPosition().toPoint()
+                    panel_rect = QRect(panel.mapToGlobal(QPoint(0, 0)), panel.size())
+                    fab = getattr(self, '_music_fab', None)
+                    fab_rect = QRect(fab.mapToGlobal(QPoint(0, 0)), fab.size()) if fab else QRect()
+                    if not panel_rect.contains(global_pos) and not fab_rect.contains(global_pos):
+                        panel.hide()
+                        welcome = getattr(self, '_welcome', None)
+                        if welcome and welcome.is_playing:
+                            self._minimize_music_panel()
+                except Exception:
+                    pass
+        return super().eventFilter(obj, event)
 
     def resizeEvent(self, event) -> None:
         """Pencere boyutu değiştiğinde yüzen adaların konumlarını günceller."""

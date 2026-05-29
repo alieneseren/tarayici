@@ -1374,6 +1374,7 @@ class MusicFullPage(QWidget):
 
         cats_row = QHBoxLayout()
         cats_row.setSpacing(12)
+        self._category_close_fns = []  # accordion için tüm kartların kapatma fonksiyonları
         for cat_name, genre_key, cat_bg in [
             ("Lo-fi Beats",    "lofi",     "#161e1e"),
             ("Techno / EDM",   "techno",   "#181826"),
@@ -1472,7 +1473,12 @@ class MusicFullPage(QWidget):
         card_lay.addWidget(content_panel)
 
         def toggle():
-            if content_panel.isHidden():
+            will_open = content_panel.isHidden()
+            # Tüm kartları kapat (accordion)
+            for fn in getattr(self, '_category_close_fns', []):
+                fn()
+            # Bu kart kapalıysa aç
+            if will_open:
                 content_panel.show()
                 expand_btn.setText("▲")
                 card.setStyleSheet(f"""
@@ -1486,7 +1492,9 @@ class MusicFullPage(QWidget):
                 if not getattr(content_panel, "_loaded", False):
                     content_panel._loaded = True
                     self._load_category(genre_key, content_layout, loading_lbl)
-            else:
+
+        def close_fn():
+            if not content_panel.isHidden():
                 content_panel.hide()
                 expand_btn.setText("▼")
                 card.setStyleSheet(f"""
@@ -1496,6 +1504,9 @@ class MusicFullPage(QWidget):
                         border-radius: 14px;
                     }}
                 """)
+
+        if hasattr(self, '_category_close_fns'):
+            self._category_close_fns.append(close_fn)
 
         expand_btn.clicked.connect(toggle)
         hdr.mousePressEvent = lambda e: toggle()
@@ -1668,44 +1679,6 @@ class MusicFullPage(QWidget):
         pc_layout.setContentsMargins(0, 0, 0, 8)
         pc_layout.setSpacing(0)
 
-        # "Beğenilenler" sabit kart
-        lc_frame = QFrame()
-        lc_frame.setFixedHeight(72)
-        lc_frame.setCursor(Qt.CursorShape.PointingHandCursor)
-        lc_frame.setStyleSheet(f"""
-            QFrame {{
-                background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
-                    stop:0 rgba(0,255,65,0.1), stop:1 transparent);
-                border-bottom: 1px solid rgba(255,255,255,0.06);
-                border-top-left-radius: 16px;
-                border-top-right-radius: 16px;
-            }}
-            QFrame:hover {{ background: rgba(0,255,65,0.06); }}
-        """)
-        lc_row = QHBoxLayout(lc_frame)
-        lc_row.setContentsMargins(20, 0, 20, 0)
-        lc_row.setSpacing(14)
-
-        lc_icon = QLabel("♥")
-        lc_icon.setFixedSize(44, 44)
-        lc_icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        lc_icon.setStyleSheet(
-            f"color: {_ACCENT}; font-size: 20px;"
-            f" background: rgba(0,255,65,0.15); border-radius: 8px; border: none;"
-        )
-        lc_row.addWidget(lc_icon)
-
-        lc_col = QVBoxLayout()
-        lc_col.setSpacing(2)
-        lc_n = QLabel("Beğenilenler")
-        lc_n.setStyleSheet(f"color: {_TEXT_PRIMARY}; font-size: 14px; font-weight: 700; background: transparent;")
-        lc_s = QLabel("Beğendiğiniz şarkılar")
-        lc_s.setStyleSheet(f"color: {_TEXT_TERTIARY}; font-size: 11px; background: transparent;")
-        lc_col.addWidget(lc_n)
-        lc_col.addWidget(lc_s)
-        lc_row.addLayout(lc_col, 1)
-        pc_layout.addWidget(lc_frame)
-
         # Playlist öğeleri (_add_playlist_item buraya ekler)
         self._playlist_widget = QWidget()
         self._playlist_widget.setStyleSheet("background: transparent;")
@@ -1726,28 +1699,16 @@ class MusicFullPage(QWidget):
     # ───────────────────────────────────────────────────────────────
 
     def _home_search_submit(self):
-        """Ana sayfa arama → sayfadan ayrılmadan inline sonuç göster."""
+        """Ana sayfa arama → Keşfet sayfasına yönlendir ve orada ara."""
         q = self._home_search_input.text().strip()
         if not q:
             return
-        # Önceki sonuçları temizle (input silme)
-        self._home_results_clear(clear_input=False)
-        if hasattr(self, "_home_res_title_lbl"):
-            self._home_res_title_lbl.setText(f"«{q}» aranıyor…")
-        if hasattr(self, "_home_results_frame"):
-            self._home_results_frame.show()
-        # Önceki search worker'ı durdur
-        if self._search_worker:
-            self._search_worker.quit()
-            self._search_worker.wait()
-        self._search_worker = _SearchWorker(q, max_results=20)
-        self._search_worker.results_ready.connect(
-            lambda items, _q=q: self._on_home_search_results(items, _q)
-        )
-        self._search_worker.search_error.connect(
-            lambda e: logger.error(f"Ana sayfa arama hatası: {e}")
-        )
-        self._search_worker.start()
+        # Keşfet sayfasına geç
+        self._nav_to_page(1, 1)
+        # Keşfet arama kutusuna sorguyu aktar ve aramayı tetikle
+        if hasattr(self, '_search_input'):
+            self._search_input.setText(q)
+        self._do_search()
 
     def _on_home_search_results(self, items: list, query: str = ""):
         """Ana sayfa inline arama sonuçları geldi."""
@@ -2144,7 +2105,7 @@ class MusicFullPage(QWidget):
     def _build_search_header(self) -> QWidget:
         """Arama header — Visionary Music browse/keşfet başlığı."""
         header = QFrame()
-        header.setFixedHeight(190)
+        header.setFixedHeight(120)
         header.setStyleSheet(f"""
             QFrame {{
                 background: rgba(18,18,18,0.6);
@@ -2172,96 +2133,50 @@ class MusicFullPage(QWidget):
         title_row.addStretch()
         layout.addLayout(title_row)
         
-        # Arama satırı
-        search_row = QHBoxLayout()
-        search_row.setSpacing(10)
-        
+        # Arama satırı — Ana Sayfa ile aynı pill tasarım
+        sf = QFrame()
+        sf.setFixedHeight(44)
+        sf.setStyleSheet(f"""
+            QFrame {{
+                background: rgba(42,42,42,0.9);
+                border: 1px solid rgba(255,255,255,0.08);
+                border-radius: 22px;
+            }}
+        """)
+        sf_lay = QHBoxLayout(sf)
+        sf_lay.setContentsMargins(16, 0, 8, 0)
+        sf_lay.setSpacing(8)
+        sch_icon = QLabel("🔍")
+        sch_icon.setStyleSheet(f"color: {_TEXT_TERTIARY}; background: transparent; font-size: 14px;")
+        sf_lay.addWidget(sch_icon)
+
         self._search_input = QLineEdit()
-        self._search_input.setPlaceholderText("🔍  Şarkı, sanatçı veya video ara...")
+        self._search_input.setPlaceholderText("Şarkı, sanatçı veya video ara…")
         self._search_input.setStyleSheet(f"""
             QLineEdit {{
-                background: rgba(255,255,255,0.07);
-                color: {_TEXT_PRIMARY};
-                border: 1px solid rgba(255,255,255,0.08);
-                border-radius: 9999px;
-                padding: 12px 22px;
-                font-size: 14px;
-            }}
-            QLineEdit:focus {{
-                border: 1px solid rgba(0,255,65,0.4);
-                background: rgba(255,255,255,0.1);
-            }}
-            QLineEdit::placeholder {{
-                color: {_TEXT_TERTIARY};
+                background: transparent; border: none;
+                color: {_TEXT_PRIMARY}; font-size: 14px;
             }}
         """)
         self._search_input.returnPressed.connect(self._do_search)
-        search_row.addWidget(self._search_input, 1)
-        
+        sf_lay.addWidget(self._search_input, 1)
+
         self._search_btn = QPushButton("Ara")
+        self._search_btn.setFixedHeight(30)
+        self._search_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self._search_btn.setStyleSheet(f"""
             QPushButton {{
-                background: {_ACCENT};
-                color: #003907;
-                border: none;
-                border-radius: 9999px;
-                padding: 12px 28px;
-                font-size: 14px;
-                font-weight: 700;
+                background: {_ACCENT}; color: #003907; border: none;
+                border-radius: 15px; font-size: 12px; font-weight: 700;
+                padding: 0 16px;
             }}
-            QPushButton:hover {{
-                background: {_ACCENT_LIGHT};
-            }}
+            QPushButton:hover {{ background: {_ACCENT_LIGHT}; }}
         """)
         self._search_btn.clicked.connect(self._do_search)
-        search_row.addWidget(self._search_btn)
-        
-        layout.addLayout(search_row)
-        
-        # URL satırı
-        url_row = QHBoxLayout()
-        url_row.setSpacing(8)
-        
-        self._url_input = QLineEdit()
-        self._url_input.setPlaceholderText("YouTube / video linki yapıştır...")
-        self._url_input.setStyleSheet(f"""
-            QLineEdit {{
-                background: rgba(255,255,255,0.04);
-                color: {_TEXT_PRIMARY};
-                border: 1px solid rgba(255,255,255,0.06);
-                border-radius: 9999px;
-                padding: 9px 18px;
-                font-size: 13px;
-            }}
-            QLineEdit:focus {{
-                border: 1px solid rgba(0,255,65,0.3);
-            }}
-        """)
-        self._url_input.returnPressed.connect(self._watch_url)
-        url_row.addWidget(self._url_input, 1)
-        
-        _pill_btn_base = f"""
-            border-radius: 9999px; padding: 9px 16px; font-size: 12px;
-            font-weight: 700; border: none;
-        """
-        
-        self._watch_url_btn = QPushButton("▶ İzle")
-        self._watch_url_btn.setStyleSheet(f"QPushButton {{ background: {_ACCENT_ROSE}; color: white; {_pill_btn_base} }} QPushButton:hover {{ background: #c41222; }}")
-        self._watch_url_btn.clicked.connect(self._watch_url)
-        url_row.addWidget(self._watch_url_btn)
+        sf_lay.addWidget(self._search_btn)
 
-        self._play_url_btn = QPushButton("♪ Dinle")
-        self._play_url_btn.setStyleSheet(f"QPushButton {{ background: {_ACCENT}; color: #003907; {_pill_btn_base} }} QPushButton:hover {{ background: {_ACCENT_LIGHT}; }}")
-        self._play_url_btn.clicked.connect(self._play_url_stream)
-        url_row.addWidget(self._play_url_btn)
+        layout.addWidget(sf)
 
-        self._download_btn = QPushButton("⬇ İndir")
-        self._download_btn.setStyleSheet(f"QPushButton {{ background: {_ACCENT_WARM}; color: white; {_pill_btn_base} }} QPushButton:hover {{ background: #FFB060; }}")
-        self._download_btn.clicked.connect(self._download_url)
-        url_row.addWidget(self._download_btn)
-        
-        layout.addLayout(url_row)
-        
         return header
         
     def _build_now_playing_bar(self) -> QWidget:

@@ -185,6 +185,9 @@ def main():
                             if hasattr(browser, '_mini_play_btn'):
                                 browser._mini_play_btn.setText("⏸")
                             browser._mini_player.show()
+                            # Müzik çalarken FAB gizle
+                        if hasattr(browser, '_music_fab'):
+                            browser._music_fab.hide()
                     except Exception as ex:
                         logger.debug(f"Mini player gösterilemedi: {ex}")
                 QTimer.singleShot(3500, _show_welcome_mini_player)
