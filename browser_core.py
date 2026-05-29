@@ -3171,6 +3171,10 @@ class VisionaryBrowser(QMainWindow):
                 lambda url: self.add_new_tab(QUrl(url), "YouTube")
             )
         page = self._music_fullpage
+        # Mini player senkronizasyonu — sadece ilk bağlantıda bağla
+        if not getattr(page, '_track_changed_connected', False):
+            page.track_changed.connect(self._on_track_changed)
+            page._track_changed_connected = True
         index = self._tab_widget.addTab(page, "🎵 Müzik")
         self._tab_widget.setCurrentIndex(index)
         QTimer.singleShot(50, self._update_new_tab_btn_pos)

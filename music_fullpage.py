@@ -342,6 +342,94 @@ class _DownloadWorker(QThread):
             self.download_done.emit("", str(e))
 
 
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#  TRENDING WORKER — YouTube'dan canlı trending müzik çeker
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+class _TrendingWorker(QThread):
+    """yt-dlp ile YouTube'dan trending müzik çeker."""
+    trending_ready = pyqtSignal(list)   # list[dict{title,url,thumbnail,duration,view_count}]
+
+    _GENRE_QUERIES = {
+        "lofi":     "lofi hip hop relax study chill beats",
+        "techno":   "techno electronic dark music mix",
+        "synthwave":"synthwave retrowave 80s mix",
+        "hiphop":   "hip hop rap türkçe 2025",
+        "global":   "trending music 2025 popular",
+        "kesfet":   "trending music 2025 charts",
+    }
+
+    def __init__(self, genre: str = "global", max_results: int = 20):
+        super().__init__()
+        self.genre = genre
+        self.max_results = max_results
+
+    def run(self):
+        import subprocess, json
+        query_text = self._GENRE_QUERIES.get(self.genre, self.genre)
+        query = f"ytsearch{self.max_results}:{query_text}"
+        try:
+            cmd = [
+                "yt-dlp", query,
+                "--dump-json", "--skip-download", "--no-playlist",
+                "--match-filter", "duration > 60",
+                "--user-agent",
+                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
+            ]
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=45)
+            items = []
+            for line in result.stdout.strip().splitlines():
+                if line.strip():
+                    try:
+                        d = json.loads(line)
+                        thumb = d.get("thumbnail") or ""
+                        # thumbnail listesi varsa en küçüğünü seç (hızlı yükle)
+                        if not thumb and d.get("thumbnails"):
+                            thumbs = sorted(
+                                d["thumbnails"],
+                                key=lambda t: t.get("width", 9999)
+                            )
+                            thumb = thumbs[0].get("url", "")
+                        items.append({
+                            "title":      d.get("title", ""),
+                            "url":        d.get("webpage_url", ""),
+                            "thumbnail":  thumb,
+                            "duration":   d.get("duration") or 0,
+                            "view_count": d.get("view_count") or 0,
+                            "uploader":   d.get("uploader") or d.get("channel", ""),
+                        })
+                    except Exception:
+                        pass
+            self.trending_ready.emit(items)
+        except Exception as e:
+            self.trending_ready.emit([])
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#  THUMBNAIL WORKER — URL'den küçük resim indirir
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+class _ThumbnailWorker(QThread):
+    """Verilen URL'den thumbnail PNG verisini indirir."""
+    done = pyqtSignal(object, bytes)   # (QLabel, data)
+
+    def __init__(self, label, url: str):
+        super().__init__()
+        self._label = label
+        self._url = url
+
+    def run(self):
+        try:
+            import urllib.request
+            req = urllib.request.Request(
+                self._url,
+                headers={"User-Agent": "Mozilla/5.0"},
+            )
+            data = urllib.request.urlopen(req, timeout=8).read()
+            self.done.emit(self._label, data)
+        except Exception:
+            self.done.emit(self._label, b"")
+
+
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 #  FULLSCREEN VIDEO WINDOW — Tam ekran video penceresi
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -418,6 +506,7 @@ class MusicFullPage(QWidget):
     
     _is_music_fullpage = True
     open_in_browser = pyqtSignal(str)
+    track_changed   = pyqtSignal(str, str, int)   # (title, url, index)
     
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -452,9 +541,14 @@ class MusicFullPage(QWidget):
         self._current_idx = -1
         
         # Workers
-        self._search_worker = None
-        self._stream_worker = None
-        self._download_worker = None
+        self._search_worker    = None
+        self._stream_worker    = None
+        self._download_worker  = None
+        self._trend_worker     = None
+        self._thumbnail_workers: list = []
+        self._trending_items: list = []
+        # Kategori worker'ları {genre_key: _TrendingWorker}
+        self._cat_workers: dict = {}
         
         # Timers
         self._progress_timer = QTimer(self)
@@ -465,7 +559,8 @@ class MusicFullPage(QWidget):
         self._setup_ui()
         self._refresh_library()
         self._refresh_playlists()
-        self._load_trends()
+        # Canlı trending — 500ms sonra başlat (UI render tamamlansın)
+        QTimer.singleShot(500, self._load_live_trends)
         
     def set_browser(self, browser):
         """Tarayıcı referansını ayarla."""
@@ -649,6 +744,7 @@ class MusicFullPage(QWidget):
         # ── Yeni Playlist ─────────────────────────────────────
         new_pl = QPushButton("+ Yeni Playlist")
         new_pl.setCursor(Qt.CursorShape.PointingHandCursor)
+        new_pl.clicked.connect(self._create_playlist_dialog)
         new_pl.setStyleSheet(f"""
             QPushButton {{
                 background: transparent;
@@ -766,7 +862,7 @@ class MusicFullPage(QWidget):
     # ───────────────────────────────────────────────────────────────
 
     def _build_ana_sayfa_page(self) -> QWidget:
-        """Ana Sayfa (index 0) — hero + grid kategoriler + trend listesi."""
+        """Ana Sayfa (index 0) — canlı hero + kategoriler + trending."""
         page = QScrollArea()
         page.setWidgetResizable(True)
         page.setStyleSheet(f"""
@@ -779,11 +875,11 @@ class MusicFullPage(QWidget):
 
         content = QWidget()
         content.setStyleSheet("background: transparent;")
-        layout = QVBoxLayout(content)
-        layout.setContentsMargins(28, 24, 28, 32)
-        layout.setSpacing(28)
+        lay = QVBoxLayout(content)
+        lay.setContentsMargins(28, 20, 28, 32)
+        lay.setSpacing(24)
 
-        # ── Üst arama çubuğu → Keşfet'e yönlendirir ──────────
+        # ── Üst arama çubuğu → Keşfet'e yönlendirip arama yapar ──
         sf = QFrame()
         sf.setFixedHeight(44)
         sf.setStyleSheet(f"""
@@ -793,29 +889,38 @@ class MusicFullPage(QWidget):
                 border-radius: 22px;
             }}
         """)
-        sf_layout = QHBoxLayout(sf)
-        sf_layout.setContentsMargins(16, 0, 8, 0)
-        sf_layout.setSpacing(8)
-
+        sf_lay = QHBoxLayout(sf)
+        sf_lay.setContentsMargins(16, 0, 8, 0)
+        sf_lay.setSpacing(8)
         sch_icon = QLabel("🔍")
         sch_icon.setStyleSheet(f"color: {_TEXT_TERTIARY}; background: transparent; font-size: 14px;")
-        sf_layout.addWidget(sch_icon)
-
-        sch_input = QLineEdit()
-        sch_input.setPlaceholderText("Şarkı, sanatçı veya albüm ara...")
-        sch_input.setStyleSheet(f"""
+        sf_lay.addWidget(sch_icon)
+        self._home_search_input = QLineEdit()
+        self._home_search_input.setPlaceholderText("Şarkı, sanatçı veya albüm ara…")
+        self._home_search_input.setStyleSheet(f"""
             QLineEdit {{
-                background: transparent;
-                border: none;
-                color: {_TEXT_PRIMARY};
-                font-size: 14px;
+                background: transparent; border: none;
+                color: {_TEXT_PRIMARY}; font-size: 14px;
             }}
         """)
-        sch_input.returnPressed.connect(lambda: self._nav_to_page(1, 1))
-        sf_layout.addWidget(sch_input, 1)
-        layout.addWidget(sf)
+        self._home_search_input.returnPressed.connect(self._home_search_submit)
+        sf_lay.addWidget(self._home_search_input, 1)
+        sch_btn = QPushButton("Ara")
+        sch_btn.setFixedHeight(30)
+        sch_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        sch_btn.setStyleSheet(f"""
+            QPushButton {{
+                background: {_ACCENT}; color: #003907; border: none;
+                border-radius: 15px; font-size: 12px; font-weight: 700;
+                padding: 0 16px;
+            }}
+            QPushButton:hover {{ background: {_ACCENT_LIGHT}; }}
+        """)
+        sch_btn.clicked.connect(self._home_search_submit)
+        sf_lay.addWidget(sch_btn)
+        lay.addWidget(sf)
 
-        # ── Hero kartı ────────────────────────────────────────
+        # ── Hero kartı (canlı trending #1 ile doldurulur) ─────────
         hero = QFrame()
         hero.setFixedHeight(300)
         hero.setStyleSheet(f"""
@@ -826,242 +931,235 @@ class MusicFullPage(QWidget):
                 border-radius: 22px;
             }}
         """)
-        hero_layout = QHBoxLayout(hero)
-        hero_layout.setContentsMargins(44, 36, 36, 36)
-        hero_layout.setSpacing(24)
+        hero_lay = QHBoxLayout(hero)
+        hero_lay.setContentsMargins(44, 36, 36, 36)
+        hero_lay.setSpacing(24)
 
         lc = QVBoxLayout()
         lc.setSpacing(10)
 
-        badge_lbl = QLabel("  ● Öne Çıkan Mix  ")
-        badge_lbl.setFixedHeight(24)
-        badge_lbl.setMaximumWidth(190)
-        badge_lbl.setStyleSheet(f"""
+        self._hero_badge = QLabel("  ● Yükleniyor…  ")
+        self._hero_badge.setFixedHeight(24)
+        self._hero_badge.setMaximumWidth(220)
+        self._hero_badge.setStyleSheet(f"""
             QLabel {{
                 color: {_ACCENT};
                 background: rgba(0,255,65,0.12);
                 border: 1px solid rgba(0,255,65,0.3);
-                border-radius: 12px;
-                font-size: 10px;
-                font-weight: 700;
-                letter-spacing: 1px;
-                padding: 0 2px;
+                border-radius: 12px; font-size: 10px; font-weight: 700;
+                letter-spacing: 1px; padding: 0 4px;
             }}
         """)
-        lc.addWidget(badge_lbl)
+        lc.addWidget(self._hero_badge)
 
-        hero_title = QLabel("Synaptic Flow")
-        hero_title.setStyleSheet(f"""
+        self._hero_title = QLabel("—")
+        self._hero_title.setWordWrap(True)
+        self._hero_title.setMaximumWidth(520)
+        self._hero_title.setStyleSheet(f"""
             QLabel {{
-                color: {_TEXT_PRIMARY};
-                font-size: 44px;
-                font-weight: 800;
-                letter-spacing: -1.5px;
-                background: transparent;
+                color: {_TEXT_PRIMARY}; font-size: 36px; font-weight: 800;
+                letter-spacing: -1px; background: transparent;
             }}
         """)
-        lc.addWidget(hero_title)
+        lc.addWidget(self._hero_title)
 
-        hero_desc = QLabel("Kişiselleştirilmiş yüksek enerjili elektronik müzik\nve derin bas akışı. Odaklanmak için açın.")
-        hero_desc.setWordWrap(True)
-        hero_desc.setStyleSheet(f"color: {_TEXT_SECONDARY}; font-size: 13px; background: transparent;")
-        lc.addWidget(hero_desc)
+        self._hero_sub = QLabel("Trending verisi yükleniyor…")
+        self._hero_sub.setWordWrap(True)
+        self._hero_sub.setStyleSheet(f"color: {_TEXT_SECONDARY}; font-size: 13px; background: transparent;")
+        lc.addWidget(self._hero_sub)
         lc.addSpacing(6)
 
         btn_row = QHBoxLayout()
         btn_row.setSpacing(10)
-
-        play_hero = QPushButton("▶  Oynat")
-        play_hero.setFixedHeight(42)
-        play_hero.setCursor(Qt.CursorShape.PointingHandCursor)
-        play_hero.setStyleSheet(f"""
+        self._hero_play_btn = QPushButton("▶  Oynat")
+        self._hero_play_btn.setFixedHeight(42)
+        self._hero_play_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._hero_play_btn.setEnabled(False)
+        self._hero_play_btn.setStyleSheet(f"""
             QPushButton {{
-                background: {_ACCENT};
-                color: #003907;
-                border: none;
-                border-radius: 21px;
-                font-size: 14px;
-                font-weight: 700;
+                background: {_ACCENT}; color: #003907; border: none;
+                border-radius: 21px; font-size: 14px; font-weight: 700;
                 padding: 0 28px;
             }}
             QPushButton:hover {{ background: {_ACCENT_LIGHT}; }}
+            QPushButton:disabled {{ background: rgba(0,255,65,0.3); color: rgba(0,57,7,0.5); }}
         """)
-        play_hero.clicked.connect(
-            lambda: self._play_stream("https://www.youtube.com/watch?v=jfKfPfyJRdk")
-        )
-        btn_row.addWidget(play_hero)
+        btn_row.addWidget(self._hero_play_btn)
 
-        save_btn = QPushButton("Kaydet")
-        save_btn.setFixedHeight(42)
-        save_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        save_btn.setStyleSheet(f"""
+        self._hero_watch_btn = QPushButton("📹  İzle")
+        self._hero_watch_btn.setFixedHeight(42)
+        self._hero_watch_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._hero_watch_btn.setEnabled(False)
+        self._hero_watch_btn.setStyleSheet(f"""
             QPushButton {{
-                background: transparent;
-                color: {_TEXT_PRIMARY};
+                background: transparent; color: {_TEXT_PRIMARY};
                 border: 1px solid rgba(255,255,255,0.2);
-                border-radius: 21px;
-                font-size: 14px;
-                font-weight: 600;
+                border-radius: 21px; font-size: 14px; font-weight: 600;
                 padding: 0 24px;
             }}
             QPushButton:hover {{ background: rgba(255,255,255,0.08); }}
+            QPushButton:disabled {{ color: rgba(229,226,225,0.4); }}
         """)
-        btn_row.addWidget(save_btn)
+        btn_row.addWidget(self._hero_watch_btn)
         btn_row.addStretch()
         lc.addLayout(btn_row)
         lc.addStretch()
-        hero_layout.addLayout(lc, 3)
+        hero_lay.addLayout(lc, 3)
 
-        # Albüm kapağı placeholder
-        art = QFrame()
-        art.setFixedSize(210, 210)
-        art.setStyleSheet(f"""
-            QFrame {{
+        # Thumbnail
+        self._hero_thumb = QLabel()
+        self._hero_thumb.setFixedSize(210, 210)
+        self._hero_thumb.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._hero_thumb.setText("♫")
+        self._hero_thumb.setStyleSheet(f"""
+            QLabel {{
                 background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
                     stop:0 #2a3a2a, stop:1 #1a2a1a);
                 border: 1px solid rgba(0,255,65,0.2);
                 border-radius: 16px;
+                color: {_ACCENT}; font-size: 72px;
             }}
         """)
-        art_inner = QVBoxLayout(art)
-        art_inner.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        art_lbl = QLabel("♫")
-        art_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        art_lbl.setStyleSheet(f"color: {_ACCENT}; font-size: 72px; background: transparent;")
-        art_inner.addWidget(art_lbl)
-        hero_layout.addWidget(art)
-        layout.addWidget(hero)
+        hero_lay.addWidget(self._hero_thumb)
+        lay.addWidget(hero)
 
-        # ── Kategoriler ───────────────────────────────────────
+        # ── Kategoriler ────────────────────────────────────────────
         cat_hdr = QHBoxLayout()
         c_title = QLabel("Kategoriler")
         c_title.setStyleSheet(f"color: {_TEXT_PRIMARY}; font-size: 20px; font-weight: 700; background: transparent;")
         cat_hdr.addWidget(c_title)
         cat_hdr.addStretch()
-        c_all = QLabel("TÜMÜNÜ GÖR")
-        c_all.setStyleSheet(f"color: {_ACCENT}; font-size: 10px; font-weight: 700; letter-spacing: 1px; background: transparent;")
-        cat_hdr.addWidget(c_all)
-        layout.addLayout(cat_hdr)
+        lay.addLayout(cat_hdr)
 
         cats_row = QHBoxLayout()
         cats_row.setSpacing(12)
-        for cat_name, cat_sub, cat_bg in [
-            ("Techno Bunker", "Derin & koyu",    "#181826"),
-            ("Ambient Void",  "Atmosferik",       "#161e16"),
-            ("Synthwave '84", "Retro fütüristik", "#261818"),
-            ("Lo-fi Beats",   "Rahatlatıcı",      "#161e1e"),
+        for cat_name, genre_key, cat_bg in [
+            ("Lo-fi Beats",    "lofi",     "#161e1e"),
+            ("Techno / EDM",   "techno",   "#181826"),
+            ("Synthwave",      "synthwave","#261818"),
+            ("Hip-Hop / Rap",  "hiphop",   "#1e1a0e"),
         ]:
-            c = QFrame()
-            c.setFixedHeight(110)
-            c.setCursor(Qt.CursorShape.PointingHandCursor)
-            c.setStyleSheet(f"""
-                QFrame {{
-                    background: {cat_bg};
-                    border: 1px solid rgba(255,255,255,0.06);
-                    border-radius: 14px;
-                }}
-                QFrame:hover {{ border: 1px solid rgba(0,255,65,0.3); }}
-            """)
-            cl = QVBoxLayout(c)
-            cl.setContentsMargins(16, 16, 16, 16)
-            cl.addStretch()
-            ct = QLabel(cat_name)
-            ct.setStyleSheet(f"color: {_TEXT_PRIMARY}; font-size: 13px; font-weight: 700; background: transparent;")
-            cs = QLabel(cat_sub)
-            cs.setStyleSheet(f"color: {_TEXT_TERTIARY}; font-size: 11px; background: transparent;")
-            cl.addWidget(ct)
-            cl.addWidget(cs)
-            cats_row.addWidget(c, 1)
-        layout.addLayout(cats_row)
+            cats_row.addWidget(self._build_category_card(cat_name, genre_key, cat_bg), 1)
+        lay.addLayout(cats_row)
 
-        # ── Trend şarkılar (özet 3 satır) ─────────────────────
+        # ── Trend Şarkılar (canlı) ─────────────────────────────────
         tr_hdr = QHBoxLayout()
         tr_l = QLabel("Trend Şarkılar")
         tr_l.setStyleSheet(f"color: {_TEXT_PRIMARY}; font-size: 20px; font-weight: 700; background: transparent;")
         tr_hdr.addWidget(tr_l)
         tr_hdr.addStretch()
-        tr_btn = QPushButton("Tümünü Gör →")
+        tr_btn = QPushButton("Keşfet'te Gör →")
         tr_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         tr_btn.setStyleSheet(f"""
             QPushButton {{
-                background: transparent;
-                color: {_ACCENT};
-                border: none;
-                font-size: 12px;
-                font-weight: 700;
+                background: transparent; color: {_ACCENT};
+                border: none; font-size: 12px; font-weight: 700;
             }}
             QPushButton:hover {{ color: {_ACCENT_LIGHT}; }}
         """)
         tr_btn.clicked.connect(lambda: self._nav_to_page(1, 1))
         tr_hdr.addWidget(tr_btn)
-        layout.addLayout(tr_hdr)
+        lay.addLayout(tr_hdr)
 
-        for i, (title, url) in enumerate([
-            ("Lofi Hip Hop Radio — Beats to Relax/Study",
-             "https://www.youtube.com/watch?v=jfKfPfyJRdk"),
-            ("Synthwave Radio — Beats to Chill/Game",
-             "https://www.youtube.com/watch?v=4xDzrJKXOOY"),
-            ("Chillhop Radio — Jazzy & Lo-fi Hip Hop",
-             "https://www.youtube.com/watch?v=5yx6BWlEVcY"),
-        ]):
-            row = QFrame()
-            row.setFixedHeight(64)
-            row.setCursor(Qt.CursorShape.PointingHandCursor)
-            row.setStyleSheet(f"""
-                QFrame {{
-                    background: rgba(18,18,18,0.7);
-                    border: 1px solid rgba(255,255,255,0.06);
-                    border-radius: 12px;
-                }}
-                QFrame:hover {{
-                    background: rgba(0,255,65,0.05);
-                    border: 1px solid rgba(0,255,65,0.2);
-                }}
-            """)
-            rl = QHBoxLayout(row)
-            rl.setContentsMargins(16, 0, 12, 0)
-            rl.setSpacing(12)
+        # Yükleniyor placeholder
+        self._home_trend_loading = QLabel("⏳  Trend şarkılar yükleniyor…")
+        self._home_trend_loading.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._home_trend_loading.setStyleSheet(f"color: {_TEXT_TERTIARY}; font-size: 13px; background: transparent; padding: 20px;")
+        lay.addWidget(self._home_trend_loading)
 
-            num_l = QLabel(str(i + 1))
-            num_l.setFixedWidth(20)
-            num_l.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            num_l.setStyleSheet(f"color: {_TEXT_TERTIARY}; font-size: 12px; background: transparent;")
-            rl.addWidget(num_l)
+        self._home_trends_widget = QWidget()
+        self._home_trends_widget.setStyleSheet("background: transparent;")
+        self._home_trends_layout = QVBoxLayout(self._home_trends_widget)
+        self._home_trends_layout.setContentsMargins(0, 0, 0, 0)
+        self._home_trends_layout.setSpacing(4)
+        self._home_trends_widget.hide()
+        lay.addWidget(self._home_trends_widget)
 
-            art_m = QFrame()
-            art_m.setFixedSize(40, 40)
-            art_m.setStyleSheet(f"background: {_SURFACE2}; border-radius: 8px; border: none;")
-            art_m_lbl = QLabel("♫", art_m)
-            art_m_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            art_m_lbl.setGeometry(0, 0, 40, 40)
-            art_m_lbl.setStyleSheet(f"color: {_ACCENT}; font-size: 16px; background: transparent;")
-            rl.addWidget(art_m)
-
-            t_l = QLabel(title)
-            t_l.setStyleSheet(f"color: {_TEXT_PRIMARY}; font-size: 13px; font-weight: 500; background: transparent;")
-            rl.addWidget(t_l, 1)
-
-            p_btn = QPushButton("▶")
-            p_btn.setFixedSize(32, 32)
-            p_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-            p_btn.setStyleSheet(f"""
-                QPushButton {{
-                    background: {_ACCENT};
-                    color: #003907;
-                    border: none;
-                    border-radius: 16px;
-                    font-size: 12px;
-                    font-weight: bold;
-                }}
-                QPushButton:hover {{ background: {_ACCENT_LIGHT}; }}
-            """)
-            p_btn.clicked.connect(lambda checked=False, u=url: self._play_stream(u))
-            rl.addWidget(p_btn)
-            layout.addWidget(row)
-
-        layout.addStretch()
+        lay.addStretch()
         page.setWidget(content)
         return page
+
+    def _build_category_card(self, name: str, genre_key: str, bg: str) -> QFrame:
+        """Açılır-kapanır kategori kartı."""
+        card = QFrame()
+        card.setStyleSheet(f"""
+            QFrame {{
+                background: {bg};
+                border: 1px solid rgba(255,255,255,0.07);
+                border-radius: 14px;
+            }}
+        """)
+        card_lay = QVBoxLayout(card)
+        card_lay.setContentsMargins(0, 0, 0, 0)
+        card_lay.setSpacing(0)
+
+        # Başlık satırı
+        hdr = QFrame()
+        hdr.setFixedHeight(54)
+        hdr.setCursor(Qt.CursorShape.PointingHandCursor)
+        hdr.setStyleSheet("QFrame { background: transparent; border: none; }")
+        hdr_lay = QHBoxLayout(hdr)
+        hdr_lay.setContentsMargins(14, 0, 14, 0)
+        hdr_lay.setSpacing(10)
+
+        name_lbl = QLabel(name)
+        name_lbl.setStyleSheet(f"color: {_TEXT_PRIMARY}; font-size: 13px; font-weight: 700; background: transparent;")
+        expand_btn = QPushButton("▼")
+        expand_btn.setFixedSize(24, 24)
+        expand_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        expand_btn.setStyleSheet(f"""
+            QPushButton {{
+                background: transparent; color: {_TEXT_TERTIARY};
+                border: none; font-size: 10px;
+            }}
+            QPushButton:hover {{ color: {_ACCENT}; }}
+        """)
+        hdr_lay.addWidget(name_lbl, 1)
+        hdr_lay.addWidget(expand_btn)
+        card_lay.addWidget(hdr)
+
+        # İçerik paneli (başta gizli)
+        content_panel = QWidget()
+        content_panel.setStyleSheet("background: transparent;")
+        content_layout = QVBoxLayout(content_panel)
+        content_layout.setContentsMargins(8, 0, 8, 8)
+        content_layout.setSpacing(2)
+        loading_lbl = QLabel("  ⏳ Yükleniyor…")
+        loading_lbl.setStyleSheet(f"color: {_TEXT_TERTIARY}; font-size: 11px; background: transparent; padding: 8px;")
+        content_layout.addWidget(loading_lbl)
+        content_panel.hide()
+        card_lay.addWidget(content_panel)
+
+        def toggle():
+            if content_panel.isHidden():
+                content_panel.show()
+                expand_btn.setText("▲")
+                card.setStyleSheet(f"""
+                    QFrame {{
+                        background: {bg};
+                        border: 1px solid rgba(0,255,65,0.3);
+                        border-radius: 14px;
+                    }}
+                """)
+                # İlk açılışta yükle
+                if not getattr(content_panel, "_loaded", False):
+                    content_panel._loaded = True
+                    self._load_category(genre_key, content_layout, loading_lbl)
+            else:
+                content_panel.hide()
+                expand_btn.setText("▼")
+                card.setStyleSheet(f"""
+                    QFrame {{
+                        background: {bg};
+                        border: 1px solid rgba(255,255,255,0.07);
+                        border-radius: 14px;
+                    }}
+                """)
+
+        expand_btn.clicked.connect(toggle)
+        hdr.mousePressEvent = lambda e: toggle()
+        return card
+
 
     # ───────────────────────────────────────────────────────────────
     #  KEŞFET  —  arama + video + sonuçlar (mevcut işlevsellik)
@@ -1199,7 +1297,7 @@ class MusicFullPage(QWidget):
         # Kütüphane scroll (_add_library_item buraya ekler)
         self._library_scroll = QScrollArea()
         self._library_scroll.setWidgetResizable(True)
-        self._library_scroll.setMaximumHeight(320)
+        self._library_scroll.setMaximumHeight(400)
         self._library_scroll.setStyleSheet("""
             QScrollArea { border: none; background: transparent; }
             QScrollBar:vertical { background: transparent; width: 6px; }
@@ -1287,6 +1385,309 @@ class MusicFullPage(QWidget):
         layout.addStretch()
         page.setWidget(content)
         return page
+
+
+    # ───────────────────────────────────────────────────────────────
+    #  CANLÜ TRENDING & THUMBNAIL & KATEGORİ YÜKLEME
+    # ───────────────────────────────────────────────────────────────
+
+    def _home_search_submit(self):
+        """Ana sayfa arama → Keşfet'e geç ve ara."""
+        q = self._home_search_input.text().strip()
+        if not q:
+            return
+        self._nav_to_page(1, 1)
+        # Keşfet'teki arama inputunu doldur ve arama başlat
+        if hasattr(self, "_search_input"):
+            self._search_input.setText(q)
+            self._do_search()
+
+    def _load_live_trends(self):
+        """YouTube'dan canlı trending verisi çek (global + Keşfet)."""
+        if self._trend_worker and self._trend_worker.isRunning():
+            return
+        self._trend_worker = _TrendingWorker("global", 12)
+        self._trend_worker.trending_ready.connect(self._on_global_trending_ready)
+        self._trend_worker.start()
+        # Keşfet için de ayrı worker
+        kt = _TrendingWorker("kesfet", 20)
+        kt.trending_ready.connect(self._on_kesfet_trending_ready)
+        kt.start()
+        self._cat_workers["kesfet_load"] = kt
+
+    def _on_global_trending_ready(self, items: list):
+        """Global trending hazır → Ana Sayfa hero + trend listesi güncelle."""
+        self._trending_items = items
+        if not items:
+            if hasattr(self, "_home_trend_loading"):
+                self._home_trend_loading.setText("⚠️  Trending verisi alınamadı.")
+            return
+
+        # Hero: #1 şarkı
+        top = items[0]
+        self._hero_title.setText(top["title"])
+        self._hero_badge.setText(f"  ● #{1} Trending  ")
+        sub = top.get("uploader", "YouTube Müzik")
+        views = top.get("view_count", 0)
+        if views:
+            sub += f"  ·  {views:,} görüntüleme"
+        self._hero_sub.setText(sub)
+        # Butonları etkinleştir
+        self._hero_play_btn.setEnabled(True)
+        self._hero_watch_btn.setEnabled(True)
+        hero_url = top["url"]
+        self._hero_play_btn.clicked.disconnect()
+        self._hero_play_btn.clicked.connect(lambda: self._play_stream(hero_url))
+        self._hero_watch_btn.clicked.disconnect()
+        self._hero_watch_btn.clicked.connect(lambda: self._watch_video_url(hero_url))
+        # Thumbnail yükle
+        if top.get("thumbnail"):
+            self._fetch_thumbnail(self._hero_thumb, top["thumbnail"], size=(210, 210))
+
+        # Trend listesi (1-10)
+        if hasattr(self, "_home_trend_loading"):
+            self._home_trend_loading.hide()
+        if hasattr(self, "_home_trends_layout"):
+            self._home_trends_widget.show()
+            # Temizle
+            while self._home_trends_layout.count():
+                ch = self._home_trends_layout.takeAt(0)
+                if ch.widget():
+                    ch.widget().deleteLater()
+            for i, item in enumerate(items[:10]):
+                self._add_home_trend_row(item, self._home_trends_layout, i + 1)
+
+    def _on_kesfet_trending_ready(self, items: list):
+        """Keşfet trending hazır → results alanına yükle (sadece henüz boşsa)."""
+        if not items:
+            return
+        # Yalnızca sonuç listesi henüz boşsa (kullanıcı arama yapmamışsa) doldur
+        if self._results_layout.count() <= 1:
+            if hasattr(self, "_section_title_label"):
+                self._section_title_label.setText("Trend Şarkılar")
+            self._clear_results()
+            for item in items[:15]:
+                self._add_result_item(item)
+
+    def _add_home_trend_row(self, item: dict, layout: "QVBoxLayout", idx: int):
+        """Ana Sayfa trend satırı (thumbnail + başlık + oynat/izle/indir)."""
+        row = QFrame()
+        row.setFixedHeight(62)
+        row.setCursor(Qt.CursorShape.PointingHandCursor)
+        row.setStyleSheet(f"""
+            QFrame {{
+                background: rgba(18,18,18,0.7);
+                border: 1px solid rgba(255,255,255,0.06);
+                border-radius: 10px;
+            }}
+            QFrame:hover {{
+                background: rgba(0,255,65,0.05);
+                border: 1px solid rgba(0,255,65,0.2);
+            }}
+        """)
+        rl = QHBoxLayout(row)
+        rl.setContentsMargins(12, 0, 10, 0)
+        rl.setSpacing(10)
+
+        # Numara
+        num = QLabel(str(idx))
+        num.setFixedWidth(22)
+        num.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        num.setStyleSheet(f"color: {_TEXT_TERTIARY}; font-size: 12px; background: transparent; font-weight: 700;")
+        rl.addWidget(num)
+
+        # Thumbnail
+        thumb_lbl = QLabel()
+        thumb_lbl.setFixedSize(42, 42)
+        thumb_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        thumb_lbl.setText("♫")
+        thumb_lbl.setStyleSheet(f"background: {_SURFACE2}; border-radius: 6px; color: {_ACCENT}; font-size: 14px; border: none;")
+        rl.addWidget(thumb_lbl)
+        if item.get("thumbnail"):
+            self._fetch_thumbnail(thumb_lbl, item["thumbnail"], size=(42, 42))
+
+        # Başlık + yazar
+        info_col = QVBoxLayout()
+        info_col.setSpacing(1)
+        t_lbl = QLabel(item["title"])
+        t_lbl.setStyleSheet(f"color: {_TEXT_PRIMARY}; font-size: 12px; font-weight: 600; background: transparent;")
+        info_col.addWidget(t_lbl)
+        if item.get("uploader"):
+            a_lbl = QLabel(item["uploader"])
+            a_lbl.setStyleSheet(f"color: {_TEXT_TERTIARY}; font-size: 10px; background: transparent;")
+            info_col.addWidget(a_lbl)
+        rl.addLayout(info_col, 1)
+
+        # Butonlar
+        url = item["url"]
+        for icon, tip, fn in [
+            ("▶", "Dinle",  lambda u=url: self._play_stream(u)),
+            ("📹", "İzle",  lambda u=url: self._watch_video_url(u)),
+            ("⬇", "İndir", lambda u=url: self._download_track(u)),
+        ]:
+            b = QPushButton(icon)
+            b.setFixedSize(28, 28)
+            b.setToolTip(tip)
+            b.setCursor(Qt.CursorShape.PointingHandCursor)
+            b.setStyleSheet(f"""
+                QPushButton {{
+                    background: {_SURFACE2}; color: {_TEXT_PRIMARY};
+                    border: none; border-radius: 14px; font-size: 11px;
+                }}
+                QPushButton:hover {{ background: {_ACCENT}; color: #003907; }}
+            """)
+            b.clicked.connect(fn)
+            rl.addWidget(b)
+
+        layout.addWidget(row)
+
+    def _load_category(self, genre_key: str, container_layout: "QVBoxLayout",
+                       loading_lbl: "QLabel"):
+        """Kategori worker başlat."""
+        w = _TrendingWorker(genre_key, 10)
+        w.trending_ready.connect(
+            lambda items, cl=container_layout, ll=loading_lbl:
+                self._on_category_ready(items, cl, ll)
+        )
+        w.start()
+        self._cat_workers[genre_key] = w
+
+    def _on_category_ready(self, items: list, container_layout: "QVBoxLayout",
+                           loading_lbl: "QLabel"):
+        """Kategori sonuçları hazır — listeye ekle."""
+        loading_lbl.hide()
+        for i, item in enumerate(items[:10]):
+            row = QFrame()
+            row.setFixedHeight(48)
+            row.setStyleSheet(f"""
+                QFrame {{
+                    background: transparent;
+                    border-bottom: 1px solid rgba(255,255,255,0.04);
+                    border-radius: 0;
+                }}
+                QFrame:hover {{ background: rgba(0,255,65,0.04); }}
+            """)
+            rl = QHBoxLayout(row)
+            rl.setContentsMargins(10, 0, 8, 0)
+            rl.setSpacing(8)
+
+            num = QLabel(str(i + 1))
+            num.setFixedWidth(18)
+            num.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            num.setStyleSheet(f"color: {_TEXT_TERTIARY}; font-size: 10px; background: transparent;")
+            rl.addWidget(num)
+
+            # Thumbnail (small)
+            tl = QLabel()
+            tl.setFixedSize(32, 32)
+            tl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            tl.setText("♫")
+            tl.setStyleSheet(f"background: {_SURFACE2}; border-radius: 5px; color: {_ACCENT}; font-size: 10px; border: none;")
+            rl.addWidget(tl)
+            if item.get("thumbnail"):
+                self._fetch_thumbnail(tl, item["thumbnail"], size=(32, 32))
+
+            t = QLabel(item["title"])
+            t.setStyleSheet(f"color: {_TEXT_PRIMARY}; font-size: 11px; font-weight: 500; background: transparent;")
+            rl.addWidget(t, 1)
+
+            url = item["url"]
+            for icon, tip, fn in [
+                ("▶", "Dinle", lambda u=url: self._play_stream(u)),
+                ("📹", "İzle", lambda u=url: self._watch_video_url(u)),
+                ("⬇", "İndir", lambda u=url: self._download_track(u)),
+            ]:
+                b = QPushButton(icon)
+                b.setFixedSize(24, 24)
+                b.setToolTip(tip)
+                b.setCursor(Qt.CursorShape.PointingHandCursor)
+                b.setStyleSheet(f"""
+                    QPushButton {{
+                        background: {_SURFACE2}; color: {_TEXT_PRIMARY};
+                        border: none; border-radius: 12px; font-size: 9px;
+                    }}
+                    QPushButton:hover {{ background: {_ACCENT}; color: #003907; }}
+                """)
+                b.clicked.connect(fn)
+                rl.addWidget(b)
+
+            container_layout.addWidget(row)
+
+    def _fetch_thumbnail(self, label: "QLabel", url: str, size=(42, 42)):
+        """Thumbnail'ı arkaplanda indir ve label'a yükle."""
+        if not url:
+            return
+        w = _ThumbnailWorker(label, url)
+        w.done.connect(lambda lbl, data, s=size: self._on_thumbnail_ready(lbl, data, s))
+        w.start()
+        self._thumbnail_workers.append(w)
+        # Liste büyümesin (tamamlanan temizle)
+        self._thumbnail_workers = [x for x in self._thumbnail_workers if x.isRunning()]
+        self._thumbnail_workers.append(w)
+
+    def _on_thumbnail_ready(self, label: "QLabel", data: bytes, size=(42, 42)):
+        """Thumbnail verisi hazır → QPixmap olarak yükle."""
+        if not data:
+            return
+        from PyQt6.QtGui import QPixmap
+        pix = QPixmap()
+        pix.loadFromData(data)
+        if pix.isNull():
+            return
+        pix = pix.scaled(
+            size[0], size[1],
+            Qt.AspectRatioMode.KeepAspectRatioByExpanding,
+            Qt.TransformationMode.SmoothTransformation,
+        )
+        # Ortalanmış kırp
+        if pix.width() > size[0] or pix.height() > size[1]:
+            x = (pix.width()  - size[0]) // 2
+            y = (pix.height() - size[1]) // 2
+            pix = pix.copy(x, y, size[0], size[1])
+        label.setText("")
+        label.setPixmap(pix)
+        label.setStyleSheet(
+            f"border-radius: {size[0] // 6}px; background: transparent; border: none;"
+        )
+
+    def _download_track(self, url: str):
+        """Hızlı indirme — _DownloadWorker ile MP3 indir."""
+        if self._download_worker and self._download_worker.isRunning():
+            return
+        self._download_worker = _DownloadWorker(url, config.MUSIC_DIR)
+        self._download_worker.download_done.connect(self._on_download_done)
+        self._download_worker.start()
+
+    def _create_playlist_dialog(self):
+        """Yeni playlist oluşturma dialogu."""
+        from PyQt6.QtWidgets import QInputDialog
+        name, ok = QInputDialog.getText(
+            self, "Yeni Playlist", "Playlist adı:",
+        )
+        if not ok or not name.strip():
+            return
+        name = name.strip()
+        import json, os
+        path = os.path.join(config.BASE_DIR, "music", "playlists.json")
+        data = {}
+        if os.path.isfile(path):
+            try:
+                with open(path, "r", encoding="utf-8") as f:
+                    loaded = json.load(f)
+                    if isinstance(loaded, dict):
+                        data = loaded
+            except Exception:
+                pass
+        if name in data:
+            return  # zaten var
+        data[name] = []
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+        # Playlist sayfasına geç ve listesi yenile
+        self._nav_to_page(2, 2)
+        # Yeni öğe ekle (duplicate olmadan)
+        self._add_playlist_item(name)
 
 
     def _build_section_header(self) -> QWidget:
@@ -2160,10 +2561,23 @@ class MusicFullPage(QWidget):
         card_layout.setContentsMargins(20, 10, 16, 10)
         card_layout.setSpacing(14)
         
-        # Numara rozeti
+        # Thumbnail + numara
         idx = self._results_layout.count()
+        thumb_lbl_r = QLabel()
+        thumb_lbl_r.setFixedSize(42, 42)
+        thumb_lbl_r.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        thumb_lbl_r.setText(str(idx))
+        thumb_lbl_r.setStyleSheet(
+            f"background: {_SURFACE2}; border-radius: 6px; color: {_TEXT_TERTIARY};"
+            " font-size: 11px; font-weight: 700; border: none;"
+        )
+        card_layout.addWidget(thumb_lbl_r)
+        if item.get("thumbnail"):
+            self._fetch_thumbnail(thumb_lbl_r, item["thumbnail"], size=(42, 42))
+
         badge = QLabel(str(idx))
         badge.setFixedSize(28, 28)
+        badge.hide()   # thumbnail varken gizle
         badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
         badge.setStyleSheet(f"""
             QLabel {{
@@ -2342,9 +2756,11 @@ class MusicFullPage(QWidget):
         """)
         layout.addWidget(title, 1)
         
-        # Play butonu
+        # Butonlar: Play + (video dosyasıysa) İzle + Sil
         play_btn = QPushButton("▶")
         play_btn.setFixedSize(28, 28)
+        play_btn.setToolTip("Dinle")
+        play_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         play_btn.setStyleSheet(f"""
             QPushButton {{
                 background: {_ACCENT};
@@ -2360,7 +2776,42 @@ class MusicFullPage(QWidget):
         """)
         play_btn.clicked.connect(lambda: self._play_lib_track(filename))
         layout.addWidget(play_btn)
-        
+
+        # Video dosyası mı? (mp4, mkv, webm)
+        if filename.lower().endswith((".mp4", ".mkv", ".webm", ".avi")):
+            watch_btn = QPushButton("📹")
+            watch_btn.setFixedSize(28, 28)
+            watch_btn.setToolTip("Video olarak izle")
+            watch_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            watch_btn.setStyleSheet(f"""
+                QPushButton {{
+                    background: rgba(233,20,41,0.7);
+                    color: #fff; border: none;
+                    border-radius: 14px; font-size: 11px;
+                }}
+                QPushButton:hover {{ background: {_ACCENT_ROSE}; }}
+            """)
+            import os as _os
+            fpath = _os.path.join(config.MUSIC_DIR, filename)
+            watch_btn.clicked.connect(
+                lambda checked=False, p=fpath: self._play_local_video(p)
+            )
+            layout.addWidget(watch_btn)
+
+        del_btn = QPushButton("🗑")
+        del_btn.setFixedSize(24, 24)
+        del_btn.setToolTip("Sil")
+        del_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        del_btn.setStyleSheet(f"""
+            QPushButton {{
+                background: transparent; color: {_TEXT_TERTIARY};
+                border: none; font-size: 11px;
+            }}
+            QPushButton:hover {{ color: {_ACCENT_ROSE}; }}
+        """)
+        del_btn.clicked.connect(lambda checked=False, fn=filename: self._delete_lib_track(fn))
+        layout.addWidget(del_btn)
+
         self._library_layout.insertWidget(self._library_layout.count() - 1, row)
         
     def _refresh_playlists(self):
@@ -2750,12 +3201,21 @@ class MusicFullPage(QWidget):
     #  NOW PLAYING
     # ─────────────────────────────────────────────────────────────
     def _update_now_playing(self):
-        """Now playing bilgisini güncelle."""
+        """Now playing bilgisini güncelle + track_changed sinyali yayınla."""
         title = self._current_title or "Şarkı seçilmedi"
         fm = self._title_label.fontMetrics()
         elided = fm.elidedText(title, Qt.TextElideMode.ElideRight, 380)
         self._title_label.setText(elided)
         self._title_label.setToolTip(title)
+        # Mini player senkronizasyonu
+        try:
+            self.track_changed.emit(
+                title,
+                self._current_url or "",
+                self._current_idx if self._current_idx >= 0 else 0,
+            )
+        except Exception:
+            pass
         
     def _update_progress(self):
         """Progress bar güncelle."""
@@ -2788,6 +3248,43 @@ class MusicFullPage(QWidget):
     # ─────────────────────────────────────────────────────────────
     #  EVENTS
     # ─────────────────────────────────────────────────────────────
+    def _play_local_video(self, filepath: str):
+        """Yerel video dosyasını video oynatıcıda oynat."""
+        import os
+        if not os.path.isfile(filepath):
+            return
+        self._nav_to_page(1, 1)
+        self._video_container.show()
+        name = os.path.basename(filepath)
+        self._video_title_label.setText(name)
+        self._set_video_panel_state("OYNATILIYOR", f"Yerel dosya: {name}", "live")
+        self._video_player.stop()
+        self._video_player.setSource(QUrl.fromLocalFile(filepath))
+        self._current_title = name
+        self._current_url = filepath
+        self._is_video_mode = True
+        self._video_player.play()
+        self._update_now_playing()
+        self._start_glow_pulse()
+
+    def _delete_lib_track(self, filename: str):
+        """Kütüphane dosyasını sil (onay sorar)."""
+        from PyQt6.QtWidgets import QMessageBox
+        import os
+        path = os.path.join(config.MUSIC_DIR, filename)
+        reply = QMessageBox.question(
+            self, "Dosyayı Sil",
+            f'"{filename}" silinsin mi?',
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        )
+        if reply == QMessageBox.StandardButton.Yes:
+            try:
+                os.remove(path)
+            except Exception:
+                pass
+            self._refresh_library()
+
+
     def showEvent(self, event):
         """Widget gösterildiğinde."""
         super().showEvent(event)
@@ -2804,14 +3301,16 @@ class MusicFullPage(QWidget):
     #  TRENDS
     # ─────────────────────────────────────────────────────────────
     def _load_trends(self):
-        """Trend şarkılar yükle (örnek listesi)."""
-        if hasattr(self, "_section_title_label"):
-            self._section_title_label.setText("Trend Şarkılar")
-        self._clear_results()
-        trends = [
-            {"title": "Lofi Hip Hop Radio - Beats to Relax/Study", "url": "https://www.youtube.com/watch?v=jfKfPfyJRdk", "duration": 0},
-            {"title": "Synthwave Radio - Beats to Chill/Game", "url": "https://www.youtube.com/watch?v=4xDzrJKXOOY", "duration": 0},
-            {"title": "Chillhop Radio - Jazzy & Lo-fi Hip Hop", "url": "https://www.youtube.com/watch?v=5yx6BWlEVcY", "duration": 0},
-        ]
-        for item in trends:
-            self._add_result_item(item)
+        """Trend şarkılar yükle — canlı veya önbellek."""
+        if self._trending_items:
+            # Zaten yüklendi
+            if hasattr(self, "_section_title_label"):
+                self._section_title_label.setText("Trend Şarkılar")
+            self._clear_results()
+            for item in self._trending_items[:15]:
+                self._add_result_item(item)
+        else:
+            # Henüz yüklenmedi → boş placeholder
+            if hasattr(self, "_section_title_label"):
+                self._section_title_label.setText("Trend Şarkılar  (yükleniyor…)")
+            self._clear_results()
