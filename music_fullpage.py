@@ -431,64 +431,340 @@ class _ThumbnailWorker(QThread):
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-#  FULLSCREEN VIDEO WINDOW — Tam ekran video penceresi
+#  FULLSCREEN VIDEO WINDOW — Tam ekran sinema modu
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 class _FullScreenVideoWindow(QWidget):
     """
-    Tam ekran video penceresi (frosted glass overlay bar).
+    Tam ekran sinema modu — tam_ekran tasarım.
+    Hover'da alt kontrol çubuğu + üst başlık belirir, 3 sn sonra kaybolur.
     """
     closed = pyqtSignal()
-    
-    def __init__(self, video_widget: QVideoWidget, parent=None):
+
+    def __init__(
+        self,
+        video_widget: QVideoWidget,
+        player: "QMediaPlayer | None" = None,
+        title: str = "",
+        artist: str = "",
+        on_prev=None,
+        on_next=None,
+        parent=None,
+    ):
         super().__init__(parent)
-        self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint)
-        self.setStyleSheet(f"background: #000000;")
-        self.showFullScreen()
-        
+        self.setWindowFlags(
+            Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint
+        )
+        self.setStyleSheet("background: #000000;")
+        self.setMouseTracking(True)
+
         self._video_widget = video_widget
-        
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(0)
-        
-        # Overlay bar (frosted glass)
-        overlay = QFrame()
-        overlay.setFixedHeight(60)
-        overlay.setStyleSheet(f"""
-            QFrame {{
-                background: {_GLASS_BG};
-                border-bottom: 1px solid {_ACCENT};
+        self._player = player
+        self._on_prev_cb = on_prev
+        self._on_next_cb = on_next
+        self._is_seeking = False
+        self._fs_duration = 0
+
+        # Video widget tam ekranı doldurur
+        main_layout = QVBoxLayout(self)
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        main_layout.setSpacing(0)
+        main_layout.addWidget(self._video_widget)
+
+        # ── Üst overlay: başlık + sanatçı ──────────────────────
+        self._top_overlay = QFrame(self)
+        self._top_overlay.setStyleSheet("""
+            QFrame {
+                background: qlineargradient(
+                    x1:0, y1:0, x2:0, y2:1,
+                    stop:0 rgba(0,0,0,0.78), stop:1 transparent
+                );
+                border: none;
+            }
+        """)
+        top_inner = QHBoxLayout(self._top_overlay)
+        top_inner.setContentsMargins(28, 24, 28, 32)
+        top_col = QVBoxLayout()
+        top_col.setSpacing(4)
+        self._fs_title_lbl = QLabel(title or "Video")
+        self._fs_title_lbl.setStyleSheet(
+            "color: #ffffff; font-size: 22px; font-weight: 700; background: transparent;"
+        )
+        self._fs_artist_lbl = QLabel(artist or "")
+        self._fs_artist_lbl.setStyleSheet(
+            "color: rgba(255,255,255,0.65); font-size: 13px; background: transparent;"
+        )
+        top_col.addWidget(self._fs_title_lbl)
+        top_col.addWidget(self._fs_artist_lbl)
+        top_inner.addLayout(top_col, 1)
+
+        # ── Alt overlay: progress + kontroller ─────────────────
+        self._bot_overlay = QFrame(self)
+        self._bot_overlay.setStyleSheet("""
+            QFrame {
+                background: qlineargradient(
+                    x1:0, y1:0, x2:0, y2:1,
+                    stop:0 transparent, stop:1 rgba(0,0,0,0.88)
+                );
+                border: none;
+            }
+        """)
+        bot_inner = QVBoxLayout(self._bot_overlay)
+        bot_inner.setContentsMargins(24, 32, 24, 24)
+        bot_inner.setSpacing(10)
+
+        # İlerleme çubuğu
+        self._fs_progress = QSlider(Qt.Orientation.Horizontal)
+        self._fs_progress.setRange(0, 1000)
+        self._fs_progress.setStyleSheet(f"""
+            QSlider::groove:horizontal {{
+                background: rgba(255,255,255,0.18);
+                height: 4px;
+                border-radius: 2px;
+            }}
+            QSlider::sub-page:horizontal {{
+                background: {_ACCENT};
+                border-radius: 2px;
+            }}
+            QSlider::handle:horizontal {{
+                background: #ffffff;
+                width: 14px; height: 14px;
+                border-radius: 7px;
+                margin: -5px 0;
             }}
         """)
-        overlay_layout = QHBoxLayout(overlay)
-        overlay_layout.setContentsMargins(20, 10, 20, 10)
-        
-        exit_btn = QPushButton("✕ Çık")
+        self._fs_progress.sliderPressed.connect(lambda: setattr(self, "_is_seeking", True))
+        self._fs_progress.sliderReleased.connect(self._fs_seek_end)
+        bot_inner.addWidget(self._fs_progress)
+
+        # Frosted-glass kontrol satırı
+        ctrl_frame = QFrame()
+        ctrl_frame.setStyleSheet("""
+            QFrame {
+                background: rgba(20,20,20,0.65);
+                border: 1px solid rgba(255,255,255,0.10);
+                border-radius: 16px;
+            }
+        """)
+        ctrl_hl = QHBoxLayout(ctrl_frame)
+        ctrl_hl.setContentsMargins(20, 6, 20, 6)
+        ctrl_hl.setSpacing(0)
+
+        _icon_btn = f"""
+            QPushButton {{
+                background: transparent; border: none;
+                color: rgba(255,255,255,0.75); font-size: 20px;
+            }}
+            QPushButton:hover {{ color: #ffffff; }}
+        """
+
+        # SOL — ses + zaman
+        left_w = QWidget()
+        left_hl = QHBoxLayout(left_w)
+        left_hl.setContentsMargins(0, 0, 0, 0)
+        left_hl.setSpacing(8)
+
+        vol_btn = QPushButton("🔊")
+        vol_btn.setFixedSize(34, 34)
+        vol_btn.setStyleSheet(_icon_btn)
+
+        self._fs_vol_slider = QSlider(Qt.Orientation.Horizontal)
+        self._fs_vol_slider.setFixedWidth(72)
+        self._fs_vol_slider.setRange(0, 100)
+        self._fs_vol_slider.setValue(70)
+        self._fs_vol_slider.setStyleSheet("""
+            QSlider::groove:horizontal {
+                background: rgba(255,255,255,0.18); height: 3px; border-radius: 2px;
+            }
+            QSlider::sub-page:horizontal { background: #ffffff; border-radius: 2px; }
+            QSlider::handle:horizontal {
+                background: #ffffff; width: 10px; height: 10px;
+                border-radius: 5px; margin: -4px 0;
+            }
+        """)
+        if self._player:
+            ao = self._player.audioOutput()
+            if ao:
+                self._fs_vol_slider.setValue(int(ao.volume() * 100))
+        self._fs_vol_slider.valueChanged.connect(self._fs_set_volume)
+
+        self._fs_time_lbl = QLabel("0:00 / 0:00")
+        self._fs_time_lbl.setStyleSheet(
+            "color: rgba(255,255,255,0.60); font-size: 12px; "
+            "font-family: monospace; background: transparent;"
+        )
+        left_hl.addWidget(vol_btn)
+        left_hl.addWidget(self._fs_vol_slider)
+        left_hl.addSpacing(10)
+        left_hl.addWidget(self._fs_time_lbl)
+        left_hl.addStretch()
+
+        # MERKEZ — önceki / oynat / sonraki
+        center_w = QWidget()
+        center_hl = QHBoxLayout(center_w)
+        center_hl.setContentsMargins(0, 0, 0, 0)
+        center_hl.setSpacing(16)
+        center_hl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        prev_btn = QPushButton("⏮")
+        prev_btn.setFixedSize(38, 38)
+        prev_btn.setStyleSheet(_icon_btn)
+        prev_btn.clicked.connect(self._fs_prev)
+
+        self._fs_play_btn = QPushButton("⏸")
+        self._fs_play_btn.setFixedSize(56, 56)
+        self._fs_play_btn.setStyleSheet(f"""
+            QPushButton {{
+                background: {_ACCENT}; color: #000000;
+                border: none; border-radius: 28px;
+                font-size: 22px; font-weight: 700;
+            }}
+            QPushButton:hover {{ background: {_ACCENT_LIGHT}; }}
+            QPushButton:pressed {{ background: {_ACCENT}; }}
+        """)
+        self._fs_play_btn.clicked.connect(self._fs_toggle_play)
+
+        next_btn = QPushButton("⏭")
+        next_btn.setFixedSize(38, 38)
+        next_btn.setStyleSheet(_icon_btn)
+        next_btn.clicked.connect(self._fs_next)
+
+        center_hl.addWidget(prev_btn)
+        center_hl.addWidget(self._fs_play_btn)
+        center_hl.addWidget(next_btn)
+
+        # SAĞ — çıkış
+        right_w = QWidget()
+        right_hl = QHBoxLayout(right_w)
+        right_hl.setContentsMargins(0, 0, 0, 0)
+        right_hl.setSpacing(8)
+        right_hl.addStretch()
+
+        exit_btn = QPushButton("⛶")
+        exit_btn.setFixedSize(36, 36)
+        exit_btn.setToolTip("Tam ekrandan çık (Esc)")
         exit_btn.setStyleSheet(f"""
             QPushButton {{
-                background: {_ACCENT};
-                color: {_TEXT_PRIMARY};
-                border: none;
-                border-radius: 12px;
-                padding: 8px 16px;
-                font-size: 14px;
-                font-weight: 600;
+                background: rgba(255,255,255,0.08);
+                color: rgba(255,255,255,0.80);
+                border: 1px solid rgba(255,255,255,0.14);
+                border-radius: 8px; font-size: 18px;
             }}
             QPushButton:hover {{
-                background: {_ACCENT_LIGHT};
+                background: {_ACCENT}; color: #000;
+                border-color: {_ACCENT};
             }}
         """)
         exit_btn.clicked.connect(self.close)
-        
-        overlay_layout.addWidget(exit_btn)
-        overlay_layout.addStretch()
-        
-        layout.addWidget(overlay)
-        layout.addWidget(self._video_widget, 1)
-        
+        right_hl.addWidget(exit_btn)
+
+        ctrl_hl.addWidget(left_w, 1)
+        ctrl_hl.addWidget(center_w, 1)
+        ctrl_hl.addWidget(right_w, 1)
+        bot_inner.addWidget(ctrl_frame)
+
+        # Idle timer — 3 sn hareketsizlikte kontroller gizlenir
+        self._idle_timer = QTimer(self)
+        self._idle_timer.setSingleShot(True)
+        self._idle_timer.timeout.connect(self._hide_controls)
+
+        # Player sinyalleri
+        if self._player:
+            self._player.positionChanged.connect(self._fs_on_position)
+            self._player.durationChanged.connect(self._fs_on_duration)
+            self._player.playbackStateChanged.connect(self._fs_on_state)
+
+        self._show_controls()
+        self.showFullScreen()
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        w, h = self.width(), self.height()
+        self._top_overlay.setGeometry(0, 0, w, 120)
+        self._bot_overlay.setGeometry(0, h - 160, w, 160)
+
+    def keyPressEvent(self, event):
+        if event.key() == Qt.Key.Key_Escape:
+            self.close()
+        elif event.key() == Qt.Key.Key_Space:
+            self._fs_toggle_play()
+        else:
+            super().keyPressEvent(event)
+
+    def mouseMoveEvent(self, event):
+        super().mouseMoveEvent(event)
+        self._show_controls()
+
+    def _show_controls(self):
+        self._top_overlay.show()
+        self._bot_overlay.show()
+        self._top_overlay.raise_()
+        self._bot_overlay.raise_()
+        self.setCursor(Qt.CursorShape.ArrowCursor)
+        self._idle_timer.start(3000)
+
+    def _hide_controls(self):
+        self._top_overlay.hide()
+        self._bot_overlay.hide()
+        self.setCursor(Qt.CursorShape.BlankCursor)
+
+    def _fs_toggle_play(self):
+        if not self._player:
+            return
+        if self._player.playbackState() == QMediaPlayer.PlaybackState.PlayingState:
+            self._player.pause()
+        else:
+            self._player.play()
+
+    def _fs_prev(self):
+        if self._on_prev_cb:
+            self._on_prev_cb()
+
+    def _fs_next(self):
+        if self._on_next_cb:
+            self._on_next_cb()
+
+    def _fs_set_volume(self, val: int):
+        if self._player:
+            ao = self._player.audioOutput()
+            if ao:
+                ao.setVolume(val / 100.0)
+
+    def _fs_seek_end(self):
+        self._is_seeking = False
+        if self._player and self._fs_duration > 0:
+            pos = int(self._fs_progress.value() * self._fs_duration / 1000)
+            self._player.setPosition(pos)
+
+    def _fs_on_position(self, pos: int):
+        if not self._is_seeking and self._fs_duration > 0:
+            self._fs_progress.setValue(int(pos * 1000 / self._fs_duration))
+
+        def _fmt(ms):
+            s = ms // 1000
+            return f"{s // 60}:{s % 60:02d}"
+
+        self._fs_time_lbl.setText(f"{_fmt(pos)} / {_fmt(self._fs_duration)}")
+
+    def _fs_on_duration(self, dur: int):
+        self._fs_duration = dur
+
+    def _fs_on_state(self, state):
+        if state == QMediaPlayer.PlaybackState.PlayingState:
+            self._fs_play_btn.setText("⏸")
+        else:
+            self._fs_play_btn.setText("▶")
+
     def closeEvent(self, event):
+        if self._player:
+            try:
+                self._player.positionChanged.disconnect(self._fs_on_position)
+                self._player.durationChanged.disconnect(self._fs_on_duration)
+                self._player.playbackStateChanged.disconnect(self._fs_on_state)
+            except Exception:
+                pass
         self.closed.emit()
         super().closeEvent(event)
+
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -2295,7 +2571,7 @@ class MusicFullPage(QWidget):
         stage_vl.setContentsMargins(0, 0, 0, 0)
         stage_vl.setSpacing(0)
         self._video_widget.setMinimumHeight(360)
-        self._video_widget.setStyleSheet("background: #000; border-radius: 14px;")
+        self._video_widget.setStyleSheet("background: #000000;")
         stage_vl.addWidget(self._video_widget, 1)
 
         glow_vl.addWidget(self._video_stage)
@@ -2576,6 +2852,7 @@ class MusicFullPage(QWidget):
 
         left_layout.addStretch()
         left_scroll.setWidget(left_widget)
+        left_scroll.setMinimumWidth(320)
         root.addWidget(left_scroll, 63)
 
         # ════════════════════════════════════════════════════════
@@ -2583,6 +2860,7 @@ class MusicFullPage(QWidget):
         # ════════════════════════════════════════════════════════
         right_frame = QFrame()
         right_frame.setObjectName("upNextPanel")
+        right_frame.setMaximumWidth(320)
         right_frame.setStyleSheet(f"""
             QFrame#upNextPanel {{
                 background: rgba(255,255,255,0.02);
@@ -2644,6 +2922,7 @@ class MusicFullPage(QWidget):
         self._video_player.positionChanged.connect(self._vid_on_position_changed)
         self._video_player.durationChanged.connect(self._vid_on_duration_changed)
         self._video_player.playbackStateChanged.connect(self._on_video_state_changed)
+        self._video_player.mediaStatusChanged.connect(self._on_media_status_changed)
 
         self._set_video_panel_state(
             "BEKLEMEDE",
@@ -3379,6 +3658,12 @@ class MusicFullPage(QWidget):
             self._wave_widget.set_playing(False)
             if state == QMediaPlayer.PlaybackState.StoppedState:
                 self._progress_timer.stop()
+
+    def _on_media_status_changed(self, status):
+        """Medya durumu değişti — parça bitiminde otomatik sonrakine geç."""
+        if status == QMediaPlayer.MediaStatus.EndOfMedia:
+            if self._current_playlist:
+                self._on_next()
                 
     def _vid_on_position_changed(self, pos: int):
         """Video pozisyon değişti."""
@@ -3418,7 +3703,13 @@ class MusicFullPage(QWidget):
         if self._fullscreen_window:
             self._exit_fullscreen()
         else:
-            self._fullscreen_window = _FullScreenVideoWindow(self._video_widget)
+            self._fullscreen_window = _FullScreenVideoWindow(
+                self._video_widget,
+                player=self._video_player,
+                title=self._current_title,
+                on_prev=self._on_prev,
+                on_next=self._on_next,
+            )
             self._fullscreen_window.closed.connect(self._exit_fullscreen)
             
     def _exit_fullscreen(self):

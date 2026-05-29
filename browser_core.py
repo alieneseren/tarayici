@@ -1399,6 +1399,9 @@ class VisionaryBrowser(QMainWindow):
         # Mini player'ı göster (müzik paneli kapalıysa)
         if not getattr(self, '_music_panel', None) or not self._music_panel.isVisible():
             self._mini_player.show()
+            # Müzik çalarken FAB butonunu gizle (mini player ile çakışma)
+            if hasattr(self, '_music_fab'):
+                self._music_fab.hide()
         if hasattr(self, '_now_playing_lbl'):
             panel_display = title[:28] + "…" if len(title) > 28 else title
             self._now_playing_lbl.setText(panel_display)
