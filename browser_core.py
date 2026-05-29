@@ -436,16 +436,8 @@ class BrowserPage(QWebEnginePage):
         return True  # Navigasyona izin ver
 
     def createWindow(self, window_type):
-        """target=_blank ve window.open linklerini yeni sekmede açar."""
-        if self._parent_view:
-            main_window = self._parent_view.window()
-            if hasattr(main_window, 'add_new_tab'):
-                # createWindow, QWebEnginePage bekler; command-center sayfasi degil,
-                # her zaman gercek bir browser tab olusturmak gerekir.
-                new_tab = main_window.add_new_tab(QUrl("about:blank"), "Yeni Sekme")
-                if hasattr(new_tab, 'page'):
-                    return new_tab.page()
-        return super().createWindow(window_type)
+        """target=_blank ve window.open isteklerini aynı sekmede açar."""
+        return self
 
     def _inject_scripts(self) -> None:
         """JavaScript dosyalarını sayfa yüklenmesinde otomatik enjekte eder."""

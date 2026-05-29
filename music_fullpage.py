@@ -1885,9 +1885,9 @@ class MusicFullPage(QWidget):
         # Butonlar
         url = item["url"]
         for icon, tip, fn in [
-            ("▶", "Dinle",  lambda u=url: self._play_stream(u)),
-            ("📹", "İzle",  lambda u=url: self._watch_video_url(u)),
-            ("⬇", "İndir", lambda u=url: self._download_track(u)),
+            ("▶", "Dinle",  lambda checked=False, u=url: self._play_stream(u)),
+            ("📹", "İzle",  lambda checked=False, u=url: self._watch_video_url(u)),
+            ("⬇", "İndir", lambda checked=False, u=url: self._download_track(u)),
         ]:
             b = QPushButton(icon)
             b.setFixedSize(28, 28)
@@ -1957,9 +1957,9 @@ class MusicFullPage(QWidget):
 
             url = item["url"]
             for icon, tip, fn in [
-                ("▶", "Dinle", lambda u=url: self._play_stream(u)),
-                ("📹", "İzle", lambda u=url: self._watch_video_url(u)),
-                ("⬇", "İndir", lambda u=url: self._download_track(u)),
+                ("▶", "Dinle", lambda checked=False, u=url: self._play_stream(u)),
+                ("📹", "İzle", lambda checked=False, u=url: self._watch_video_url(u)),
+                ("⬇", "İndir", lambda checked=False, u=url: self._download_track(u)),
             ]:
                 b = QPushButton(icon)
                 b.setFixedSize(24, 24)
@@ -2479,7 +2479,7 @@ class MusicFullPage(QWidget):
 
         container = QFrame()
         container.setObjectName("videoDeck")
-        container.setStyleSheet("QFrame#videoDeck { background: transparent; border: none; }")
+        container.setStyleSheet(f"QFrame#videoDeck {{ background: {_BG}; border: none; }}")
 
         root = QHBoxLayout(container)
         root.setContentsMargins(0, 0, 0, 0)
@@ -2788,10 +2788,10 @@ class MusicFullPage(QWidget):
                 border-color: rgba(255,255,255,0.22);
             }}
         """
-        for icon_lbl in [("👍", "Beğen"), ("🔗", "Paylaş"), ("⬇", "İndir")]:
-            ab = QPushButton(f"{icon_lbl[0]}  {icon_lbl[1]}")
-            ab.setStyleSheet(_action_btn_ss)
-            ch_hl.addWidget(ab)
+        self._vid_download_btn = QPushButton("⬇  İndir")
+        self._vid_download_btn.setStyleSheet(_action_btn_ss)
+        self._vid_download_btn.clicked.connect(self._vid_download_or_delete)
+        ch_hl.addWidget(self._vid_download_btn)
 
         left_layout.addWidget(ch_frame)
 
@@ -3617,7 +3617,7 @@ class MusicFullPage(QWidget):
         self._nav_to_page(3, 4)  # Video sayfasına geç
         self._video_player.play()
         self._update_now_playing()
-        self._start_glow_pulse()
+        self._update_vid_download_btn()
         self._pending_video_url = ""
         # Mevcut videoya göre ilişkili videoları yükle
         self._fetch_related_videos(title)
@@ -3843,7 +3843,36 @@ class MusicFullPage(QWidget):
         self._nav_to_page(3, 4)  # Video sayfasına geç
         self._video_player.play()
         self._update_now_playing()
-        self._start_glow_pulse()
+        self._update_vid_download_btn()
+
+    def _update_vid_download_btn(self) -> None:
+        """İndir / İndirilmiş buton durumunu güncelle."""
+        if not hasattr(self, "_vid_download_btn"):
+            return
+        import os
+        is_local = bool(self._current_url and os.path.isfile(self._current_url))
+        if is_local:
+            self._vid_download_btn.setText("✓  İndirilmiş")
+            self._vid_download_btn.setToolTip("Yerel dosyayı hafızadan sil")
+        else:
+            self._vid_download_btn.setText("⬇  İndir")
+            self._vid_download_btn.setToolTip("Videoyu indir")
+
+    def _vid_download_or_delete(self) -> None:
+        """İndir / İndirilmiş butona tıklandı.
+        Yerel dosya oynatılıyorsa dosyayı sil.
+        İnternet akışı devam ediyorsa oynatmaya dokunma.
+        """
+        import os
+        path = self._current_url or ""
+        if path and os.path.isfile(path):
+            # Yerel dosyayı sil — akış oynatımını durdurmadan
+            try:
+                os.remove(path)
+            except Exception as e:
+                logger.warning(f"Dosya silinemedi: {e}")
+            self._update_vid_download_btn()
+            self._refresh_library()
 
     def _delete_lib_track(self, filename: str):
         """Kütüphane dosyasını sil (onay sorar)."""
