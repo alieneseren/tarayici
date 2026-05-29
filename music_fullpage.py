@@ -672,8 +672,8 @@ class MusicFullPage(QWidget):
         self._pulse_overlay.setGeometry(self.rect())
         self._pulse_overlay.lower()
 
-        # Başlangıç sayfası: Keşfet (index 1)
-        self._nav_to_page(1, 1)
+        # Başlangıç sayfası: Ana Sayfa (index 0)
+        self._nav_to_page(0, 0)
 
     # ───────────────────────────────────────────────────────────────
     #  SIDEBAR  —  navigasyon odaklı (library/playlist'ler Kütüphane'de)
@@ -930,6 +930,40 @@ class MusicFullPage(QWidget):
         sch_btn.clicked.connect(self._home_search_submit)
         sf_lay.addWidget(sch_btn)
         lay.addWidget(sf)
+
+        # ── İnline arama sonuçları (başta gizli) ──────────────────
+        self._home_results_frame = QWidget()
+        self._home_results_frame.setStyleSheet("background: transparent;")
+        hrf_lay = QVBoxLayout(self._home_results_frame)
+        hrf_lay.setContentsMargins(0, 12, 0, 0)
+        hrf_lay.setSpacing(8)
+
+        hrf_hdr = QHBoxLayout()
+        self._home_res_title_lbl = QLabel("Sonuçlar")
+        self._home_res_title_lbl.setStyleSheet(
+            f"color:{_TEXT_PRIMARY}; font-size:18px; font-weight:700; background:transparent;"
+        )
+        hrf_hdr.addWidget(self._home_res_title_lbl, 1)
+        hrf_clear_btn = QPushButton("✕ Kapat")
+        hrf_clear_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        hrf_clear_btn.setStyleSheet(
+            f"QPushButton{{background:transparent;color:{_TEXT_TERTIARY};border:none;font-size:12px;}}"
+            f"QPushButton:hover{{color:{_ACCENT};}}"
+        )
+        hrf_clear_btn.clicked.connect(self._home_results_clear)
+        hrf_hdr.addWidget(hrf_clear_btn)
+        hrf_lay.addLayout(hrf_hdr)
+
+        self._home_res_items = QWidget()
+        self._home_res_items.setStyleSheet("background: transparent;")
+        self._home_res_items_layout = QVBoxLayout(self._home_res_items)
+        self._home_res_items_layout.setContentsMargins(0, 0, 0, 0)
+        self._home_res_items_layout.setSpacing(2)
+        self._home_res_items_layout.addStretch()
+        hrf_lay.addWidget(self._home_res_items)
+
+        self._home_results_frame.hide()
+        lay.addWidget(self._home_results_frame)
 
         # ── Hero kartı (canlı trending #1 ile doldurulur) ─────────
         hero = QFrame()
@@ -1250,8 +1284,16 @@ class MusicFullPage(QWidget):
         act_t.setStyleSheet(f"color: {_TEXT_PRIMARY}; font-size: 20px; font-weight: 700; background: transparent;")
         act_hdr.addWidget(act_t)
         act_hdr.addStretch()
-        act_all = QLabel("TÜMÜNÜ GÖR")
-        act_all.setStyleSheet(f"color: {_ACCENT}; font-size: 10px; font-weight: 700; letter-spacing: 1px; background: transparent;")
+        act_all = QPushButton("TÜMÜNÜ GÖR")
+        act_all.setCursor(Qt.CursorShape.PointingHandCursor)
+        act_all.setStyleSheet(
+            f"QPushButton{{color:{_ACCENT};background:transparent;border:none;"
+            f"font-size:10px;font-weight:700;letter-spacing:1px;}}"
+            f"QPushButton:hover{{color:{_ACCENT_LIGHT};}}"
+        )
+        act_all.clicked.connect(
+            lambda: self._library_scroll.setMaximumHeight(16777215)
+        )
         act_hdr.addWidget(act_all)
         layout.addLayout(act_hdr)
 
@@ -1388,15 +1430,54 @@ class MusicFullPage(QWidget):
     # ───────────────────────────────────────────────────────────────
 
     def _home_search_submit(self):
-        """Ana sayfa arama → Keşfet'e geç ve ara."""
+        """Ana sayfa arama → sayfadan ayrılmadan inline sonuç göster."""
         q = self._home_search_input.text().strip()
         if not q:
             return
-        self._nav_to_page(1, 1)
-        # Keşfet'teki arama inputunu doldur ve arama başlat
-        if hasattr(self, "_search_input"):
-            self._search_input.setText(q)
-            self._do_search()
+        # Önceki sonuçları temizle (input silme)
+        self._home_results_clear(clear_input=False)
+        if hasattr(self, "_home_res_title_lbl"):
+            self._home_res_title_lbl.setText(f"«{q}» aranıyor…")
+        if hasattr(self, "_home_results_frame"):
+            self._home_results_frame.show()
+        # Önceki search worker'ı durdur
+        if self._search_worker:
+            self._search_worker.quit()
+            self._search_worker.wait()
+        self._search_worker = _SearchWorker(q, max_results=20)
+        self._search_worker.results_ready.connect(
+            lambda items, _q=q: self._on_home_search_results(items, _q)
+        )
+        self._search_worker.search_error.connect(
+            lambda e: logger.error(f"Ana sayfa arama hatası: {e}")
+        )
+        self._search_worker.start()
+
+    def _on_home_search_results(self, items: list, query: str = ""):
+        """Ana sayfa inline arama sonuçları geldi."""
+        if hasattr(self, "_home_res_title_lbl"):
+            self._home_res_title_lbl.setText(f"Arama Sonuçları  ({len(items)} sonuç)")
+        if not hasattr(self, "_home_res_items_layout"):
+            return
+        # Önceki sonuçları temizle
+        while self._home_res_items_layout.count() > 1:
+            child = self._home_res_items_layout.takeAt(0)
+            if child.widget():
+                child.widget().deleteLater()
+        for item in items:
+            self._add_result_item(item, target_layout=self._home_res_items_layout)
+
+    def _home_results_clear(self, clear_input: bool = True):
+        """Ana sayfa arama sonuçlarını kapat."""
+        if hasattr(self, "_home_results_frame"):
+            self._home_results_frame.hide()
+        if hasattr(self, "_home_res_items_layout"):
+            while self._home_res_items_layout.count() > 1:
+                child = self._home_res_items_layout.takeAt(0)
+                if child.widget():
+                    child.widget().deleteLater()
+        if clear_input and hasattr(self, "_home_search_input"):
+            self._home_search_input.clear()
 
     def _load_live_trends(self):
         """YouTube'dan canlı trending verisi çek (global + Keşfet)."""
@@ -2753,7 +2834,7 @@ class MusicFullPage(QWidget):
             if child.widget():
                 child.widget().deleteLater()
                 
-    def _add_result_item(self, item: dict):
+    def _add_result_item(self, item: dict, target_layout=None):
         """Sonuç kartı ekle — Visionary Music track-row stili."""
         row = QFrame()
         row.setStyleSheet(f"""
@@ -2890,8 +2971,9 @@ class MusicFullPage(QWidget):
         
         card_layout.addLayout(btn_layout)
         
-        self._results_layout.insertWidget(self._results_layout.count() - 1, row)
-        
+        target = target_layout if target_layout is not None else self._results_layout
+        target.insertWidget(target.count() - 1, row)
+
     # ─────────────────────────────────────────────────────────────
     #  LIBRARY
     # ─────────────────────────────────────────────────────────────
@@ -2987,11 +3069,13 @@ class MusicFullPage(QWidget):
         play_btn.clicked.connect(lambda: self._play_lib_track(filename))
         layout.addWidget(play_btn)
 
-        # Video dosyası mı? (mp4, mkv, webm)
-        if filename.lower().endswith((".mp4", ".mkv", ".webm", ".avi")):
-            watch_btn = QPushButton("📹")
+        # Video dosyası mı?
+        _VIDEO_EXTS = (".mp4", ".mkv", ".webm", ".avi", ".mov", ".m4v",
+                       ".ts", ".mpeg", ".mpg", ".wmv", ".flv", ".3gp")
+        if filename.lower().endswith(_VIDEO_EXTS):
+            watch_btn = QPushButton("�")
             watch_btn.setFixedSize(28, 28)
-            watch_btn.setToolTip("Video olarak izle")
+            watch_btn.setToolTip("Büyük Ekranda İzle (Video Sayfası)")
             watch_btn.setCursor(Qt.CursorShape.PointingHandCursor)
             watch_btn.setStyleSheet(f"""
                 QPushButton {{
