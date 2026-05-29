@@ -1836,27 +1836,36 @@ class VisionaryBrowser(QMainWindow):
             self._music_panel.show()
 
     def _toggle_music_playback(self) -> None:
-        """Aktif müzigi durdur/başlat — MusicFullPage öncelikli."""
+        """Aktif müzigi durdur/başlat.
+        Öncelik: MusicFullPage (kaynak yüklüyse) → welcome (başlangıç müziği).
+        """
+        from PyQt6.QtMultimedia import QMediaPlayer
         music_page = getattr(self, '_music_fullpage', None)
-        if music_page:
+        welcome = getattr(self, '_welcome', None)
+
+        # MusicFullPage'de gerçekten yüklü/çalınan bir kaynak varsa onu kontrol et
+        mp_has_source = (
+            music_page is not None
+            and not music_page._video_player.source().isEmpty()
+        )
+
+        if mp_has_source:
             music_page._toggle_play()
             state = music_page._video_player.playbackState()
-            from PyQt6.QtMultimedia import QMediaPlayer
             playing = state == QMediaPlayer.PlaybackState.PlayingState
             icon = "⏸" if playing else "▶"
+        elif welcome:
+            # Başlangıç / welcome müziğini kontrol et
+            playing = welcome.toggle_music()
+            icon = "⏸" if playing else "▶"
+            if hasattr(self, '_yt_video_frame') and self._yt_video_frame.isVisible():
+                if playing:
+                    self._yt_video_frame.resume_video()
+                else:
+                    self._yt_video_frame.pause_video()
         else:
-            welcome = getattr(self, '_welcome', None)
-            if welcome:
-                playing = welcome.toggle_music()
-                icon = "⏸" if playing else "▶"
-                # Video frame'i de senkronize et
-                if hasattr(self, '_yt_video_frame') and self._yt_video_frame.isVisible():
-                    if playing:
-                        self._yt_video_frame.resume_video()
-                    else:
-                        self._yt_video_frame.pause_video()
-            else:
-                icon = "▶"
+            icon = "▶"
+
         self._play_btn.setText(icon)
         if hasattr(self, '_mini_play_btn'):
             self._mini_play_btn.setText(icon)

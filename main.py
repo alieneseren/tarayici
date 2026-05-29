@@ -175,6 +175,19 @@ def main():
                 )
                 browser._welcome.play()
                 logger.info("Hoşgeldin selamlaması çalınıyor.")
+                # Müzik başladıktan sonra mini player'ı göster (kullanıcı durdurabilsin)
+                def _show_welcome_mini_player():
+                    try:
+                        wlc = getattr(browser, '_welcome', None)
+                        if wlc and wlc.is_playing:
+                            browser._mini_track_label.setText("♪ Hoşgeldin müziği")
+                            browser._play_btn.setText("⏸")
+                            if hasattr(browser, '_mini_play_btn'):
+                                browser._mini_play_btn.setText("⏸")
+                            browser._mini_player.show()
+                    except Exception as ex:
+                        logger.debug(f"Mini player gösterilemedi: {ex}")
+                QTimer.singleShot(3500, _show_welcome_mini_player)
         except Exception as e:
             logger.warning(f"Hoşgeldin hatası: {e}")
 
