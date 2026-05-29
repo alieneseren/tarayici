@@ -173,24 +173,26 @@ def main():
                     voice=settings.tts_voice,
                     music_start_sec=settings.get("music_start_sec", 0)
                 )
-                browser._welcome.play()
-                logger.info("Hoşgeldin selamlaması çalınıyor.")
-                # Müzik başladıktan sonra mini player'ı göster (kullanıcı durdurabilsin)
+                # Müzik gerçekten başladığında mini player'ı göster
                 def _show_welcome_mini_player():
                     try:
                         wlc = getattr(browser, '_welcome', None)
-                        if wlc and wlc.is_playing:
-                            browser._mini_track_label.setText("♪ Hoşgeldin müziği")
-                            browser._play_btn.setText("⏸")
-                            if hasattr(browser, '_mini_play_btn'):
-                                browser._mini_play_btn.setText("⏸")
-                            browser._mini_player.show()
-                            # Müzik çalarken FAB gizle
+                        if not wlc:
+                            return
+                        browser._mini_track_label.setText("♪ Hoşgeldin müziği")
+                        browser._play_btn.setText("⏸")
+                        if hasattr(browser, '_mini_play_btn'):
+                            browser._mini_play_btn.setText("⏸")
+                        browser._update_mini_player_position()
+                        browser._mini_player.show()
+                        browser._mini_player.raise_()
                         if hasattr(browser, '_music_fab'):
                             browser._music_fab.hide()
                     except Exception as ex:
                         logger.debug(f"Mini player gösterilemedi: {ex}")
-                QTimer.singleShot(3500, _show_welcome_mini_player)
+                browser._welcome.set_on_music_started(_show_welcome_mini_player)
+                browser._welcome.play()
+                logger.info("Hoşgeldin selamlaması çalınıyor.")
         except Exception as e:
             logger.warning(f"Hoşgeldin hatası: {e}")
 

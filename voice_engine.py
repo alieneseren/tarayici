@@ -1169,6 +1169,7 @@ class WelcomeGreeting:
         self._current_track_title: str = ""
         self._current_track_url: str = ""  # YouTube URL
         self._on_track_changed_cb: Optional[Callable] = None  # (title, url, index) callback
+        self._on_music_started_cb: Optional[Callable] = None  # müzik gerçekten çalmaya başladığında
         # Özel playlist — None ise tüm kütüphane sırası kullanılır
         self._custom_playlist_indices: Optional[List[int]] = None
 
@@ -1380,6 +1381,10 @@ class WelcomeGreeting:
         self._music_output.setVolume(vol)
         logger.info("Müzik sesi geri açıldı")
 
+    def set_on_music_started(self, callback: Callable) -> None:
+        """Müzik gerçekten çalmaya başladığında çağrılacak callback'i ayarla."""
+        self._on_music_started_cb = callback
+
     def _on_music_ready(self, path: str) -> None:
         """İndirilen müziği çal."""
         logger.info(f"Başlangıç müziği çalınıyor: {path}")
@@ -1387,6 +1392,9 @@ class WelcomeGreeting:
         # Küçük gecikme ile çal (source set edildikten hemen sonra çalmayı garanti et)
         QTimer.singleShot(200, self._music_player.play)
         self._is_playing = True
+        # Müzik başladığında UI callback'ini tetikle
+        if self._on_music_started_cb:
+            QTimer.singleShot(400, self._on_music_started_cb)
 
     def stop_music(self) -> None:
         self._music_player.stop()
