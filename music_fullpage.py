@@ -841,7 +841,27 @@ class MusicFullPage(QWidget):
     def set_browser(self, browser):
         """Tarayıcı referansını ayarla."""
         self._browser = browser
-        
+
+    def notify_external_playback(self, title: str, url: str, index: int) -> None:
+        """
+        Dışarıdaki bir player (welcome/mini player) şarkı çaldığında
+        Now Playing bar'ı ve wave animasyonunu güncelle.
+        Kendi video_player'ında kaynak varsa güncelleme yapma.
+        """
+        if not self._video_player.source().isEmpty():
+            return  # Kendi player'ı aktif — müdahale etme
+        self._current_title = title
+        self._current_url = url
+        # Now playing bar başlığını güncelle
+        fm = self._title_label.fontMetrics()
+        elided = fm.elidedText(title, Qt.TextElideMode.ElideRight, 380)
+        self._title_label.setText(elided)
+        self._title_label.setToolTip(title)
+        # Play butonu ve dalga animasyonu
+        self._play_btn.setText("⏸")
+        self._wave_widget.set_playing(True)
+
+
     def cleanup(self):
         """Cleanup kaynaklar."""
         if self._video_player:

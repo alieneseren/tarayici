@@ -1416,6 +1416,10 @@ class VisionaryBrowser(QMainWindow):
                 self._yt_watch_btn.hide()
         # Kütüphane listesini güncelle (çalan şarkıyı vurgula) — deferred
         QTimer.singleShot(50, self._refresh_library_ui)
+        # MusicFullPage açıksa now-playing bar'ını senkronize et
+        music_page = getattr(self, '_music_fullpage', None)
+        if music_page and hasattr(music_page, 'notify_external_playback'):
+            QTimer.singleShot(50, lambda: music_page.notify_external_playback(title, url, index))
         # YouTube video penceresi — kullanıcı kapattıysa tekrar açma
         if url and hasattr(self, '_yt_video_frame') and not getattr(self, '_pip_user_closed', False):
             try:
