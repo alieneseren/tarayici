@@ -672,6 +672,18 @@ class _FullScreenVideoWindow(QWidget):
             self._player.positionChanged.connect(self._fs_on_position)
             self._player.durationChanged.connect(self._fs_on_duration)
             self._player.playbackStateChanged.connect(self._fs_on_state)
+            # Mevcut durumu hemen yansıt (video zaten oynuyorsa durationChanged tetiklenmez)
+            dur = self._player.duration()
+            if dur > 0:
+                self._fs_duration = dur
+                pos = self._player.position()
+                self._fs_progress.setValue(int(pos * 1000 / dur))
+                def _fmt(ms: int) -> str:
+                    s = ms // 1000
+                    return f"{s // 60}:{s % 60:02d}"
+                self._fs_time_lbl.setText(f"{_fmt(pos)} / {_fmt(dur)}")
+            # Play butonunu mevcut duruma göre ayarla
+            self._fs_on_state(self._player.playbackState())
 
         self._show_controls()
         self.showFullScreen()
@@ -955,6 +967,11 @@ class MusicFullPage(QWidget):
         # Geriye dönük uyumluluk: _video_container alias'ı
         self._video_container = self._video_page
 
+        # Playlist detay sayfası (index 4)
+        self._pl_detail_name = ""
+        self._playlist_detail_page = self._build_playlist_detail_page()  # 4
+        self._pages.addWidget(self._playlist_detail_page)
+
         right_layout.addWidget(self._pages, 1)
 
         # Now playing bar (her sayfada görünür)
@@ -1030,6 +1047,7 @@ class MusicFullPage(QWidget):
             ("🔍", "Keşfet",      1),
             ("📚", "Kütüphane",   2),
             ("♡",  "Beğenilenler",2),
+            ("▶",  "Video",       3),
         ]
         for btn_i, (icon, label, page_idx) in enumerate(nav_data):
             btn = QPushButton(f"  {icon}   {label}")
@@ -1121,12 +1139,7 @@ class MusicFullPage(QWidget):
     def _nav_to_page(self, page_idx: int, btn_idx: int = -1):
         """Sayfaya geç + sidebar buton durumunu güncelle."""
         self._pages.setCurrentIndex(page_idx)
-        # Video sayfası (3) için hiçbir nav butonu aktif olmaz
-        if page_idx >= 3:
-            for btn in self._nav_btns:
-                self._set_nav_btn_active(btn, False)
-            return
-        # btn_idx belirtilmediyse sayfa_idx = buton_idx (0→0, 1→1, 2→2)
+        # btn_idx belirtilmediyse sayfa_idx = buton_idx (0→0, 1→1, 2→2, 3→4)
         effective = btn_idx if btn_idx >= 0 else page_idx
         for i, btn in enumerate(self._nav_btns):
             self._set_nav_btn_active(btn, i == effective)
@@ -1598,9 +1611,12 @@ class MusicFullPage(QWidget):
             f"font-size:10px;font-weight:700;letter-spacing:1px;}}"
             f"QPushButton:hover{{color:{_ACCENT_LIGHT};}}"
         )
-        act_all.clicked.connect(
-            lambda: self._library_scroll.setMaximumHeight(16777215)
-        )
+        def _expand_library():
+            if hasattr(self, '_library_scroll'):
+                self._library_scroll.setMaximumHeight(16777215)
+                self._library_scroll.updateGeometry()
+                act_all.hide()
+        act_all.clicked.connect(_expand_library)
         act_hdr.addWidget(act_all)
         layout.addLayout(act_hdr)
 
@@ -2061,17 +2077,21 @@ class MusicFullPage(QWidget):
         title_row.addWidget(self._section_title_label)
         title_row.addStretch()
 
-        view_all_lbl = QLabel("TÜMÜNÜ GÖR")
-        view_all_lbl.setStyleSheet(f"""
-            QLabel {{
+        self._view_all_btn = QPushButton("TÜMÜNÜ GÖR")
+        self._view_all_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._view_all_btn.setStyleSheet(f"""
+            QPushButton {{
                 color: {_ACCENT};
                 font-size: 11px;
                 font-weight: 700;
                 letter-spacing: 1px;
                 background: transparent;
+                border: none;
             }}
+            QPushButton:hover {{ color: {_ACCENT_LIGHT}; }}
         """)
-        title_row.addWidget(view_all_lbl)
+        self._view_all_btn.clicked.connect(self._do_search_all)
+        title_row.addWidget(self._view_all_btn)
         layout.addLayout(title_row)
 
         # Sütun başlıkları satırı
@@ -2502,14 +2522,20 @@ class MusicFullPage(QWidget):
                 border-radius: 14px;
             }
         """)
+        self._video_stage.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
+        )
         stage_vl = QVBoxLayout(self._video_stage)
         stage_vl.setContentsMargins(0, 0, 0, 0)
         stage_vl.setSpacing(0)
         self._video_widget.setMinimumHeight(360)
+        self._video_widget.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
+        )
         self._video_widget.setStyleSheet("background: #000000;")
         stage_vl.addWidget(self._video_widget, 1)
 
-        glow_vl.addWidget(self._video_stage)
+        glow_vl.addWidget(self._video_stage, 1)
         left_layout.addWidget(glow_frame, 1)
 
         # ── 2. Control bar ──
@@ -3025,6 +3051,9 @@ class MusicFullPage(QWidget):
         if not query:
             return
         self._clear_results()
+        # Yeni aramada "Tümünü Gör" butonunu tekrar göster
+        if hasattr(self, "_view_all_btn"):
+            self._view_all_btn.show()
         if self._search_worker:
             self._search_worker.quit()
             self._search_worker.wait()
@@ -3365,6 +3394,7 @@ class MusicFullPage(QWidget):
         layout.addWidget(icon_lbl)
         
         name_lbl = QLabel(name)
+        name_lbl.setCursor(Qt.CursorShape.PointingHandCursor)
         name_lbl.setStyleSheet(f"""
             QLabel {{
                 color: {_TEXT_SECONDARY};
@@ -3373,8 +3403,25 @@ class MusicFullPage(QWidget):
                 background: transparent;
             }}
         """)
+        name_lbl.mousePressEvent = lambda e, n=name: self._open_playlist_detail(n)  # type: ignore[assignment]
         layout.addWidget(name_lbl, 1)
-        
+
+        open_btn = QPushButton("→")
+        open_btn.setFixedSize(26, 26)
+        open_btn.setToolTip("Playlist'i aç")
+        open_btn.setStyleSheet(f"""
+            QPushButton {{
+                background: {_SURFACE2};
+                color: {_TEXT_PRIMARY};
+                border: 1px solid {_GLASS_BORDER};
+                border-radius: 13px;
+                font-size: 11px;
+            }}
+            QPushButton:hover {{ background: {_SURFACE3}; }}
+        """)
+        open_btn.clicked.connect(lambda: self._open_playlist_detail(name))
+        layout.addWidget(open_btn)
+
         play_btn = QPushButton("▶")
         play_btn.setFixedSize(26, 26)
         play_btn.setStyleSheet(f"""
@@ -3527,7 +3574,7 @@ class MusicFullPage(QWidget):
         self._pending_video_url = url
         self._current_url = url
         # Video sayfasına (index 3) geç
-        self._nav_to_page(3)
+        self._nav_to_page(3, 4)
         self._video_title_label.setText("Video hazirlaniyor...")
         self._video_browser_btn.setEnabled(True)
         self._set_video_panel_state(
@@ -3562,16 +3609,18 @@ class MusicFullPage(QWidget):
             f"{fmt} hazır. İsterseniz videoyu tarayıcıda orijinal sayfasında da açabilirsiniz.",
             "live",
         )
-        self._nav_to_page(3)  # Video sayfasına geç
+        self._nav_to_page(3, 4)  # Video sayfasına geç
         self._video_player.play()
         self._update_now_playing()
         self._start_glow_pulse()
         self._pending_video_url = ""
+        # Mevcut videoya göre ilişkili videoları yükle
+        self._fetch_related_videos(title)
         
     def _on_video_stream_error(self, error: str):
         """Video stream hatası."""
         logger.error(f"Video stream hatası: {error}")
-        self._nav_to_page(3)  # Video sayfasında hata mesajını göster
+        self._nav_to_page(3, 4)  # Video sayfasında hata mesajını göster
         self._video_title_label.setText("Video açılamadı")
         self._set_video_panel_state(
             "HATA",
@@ -3786,7 +3835,7 @@ class MusicFullPage(QWidget):
         self._current_title = name
         self._current_url = filepath
         self._is_video_mode = True
-        self._nav_to_page(3)  # Video sayfasına geç
+        self._nav_to_page(3, 4)  # Video sayfasına geç
         self._video_player.play()
         self._update_now_playing()
         self._start_glow_pulse()
@@ -3838,3 +3887,417 @@ class MusicFullPage(QWidget):
             if hasattr(self, "_section_title_label"):
                 self._section_title_label.setText("Trend Şarkılar  (yükleniyor…)")
             self._clear_results()
+
+    # ─────────────────────────────────────────────────────────────
+    #  TÜMÜNÜ GÖR — genişletilmiş arama
+    # ─────────────────────────────────────────────────────────────
+    def _do_search_all(self):
+        """Mevcut sorguyu 50 sonuçla tekrar ara."""
+        query = self._search_input.text().strip()
+        if not query:
+            return
+        self._clear_results()
+        if hasattr(self, "_section_title_label"):
+            self._section_title_label.setText(f"Tüm Sonuçlar — {query}  (yükleniyor…)")
+        if self._search_worker:
+            self._search_worker.quit()
+            self._search_worker.wait()
+        self._search_worker = _SearchWorker(query, max_results=50)
+        self._search_worker.results_ready.connect(self._on_search_results)
+        self._search_worker.search_error.connect(lambda e: logger.error(f"Arama hatası: {e}"))
+        self._search_worker.start()
+        # Butonu gizle (zaten genişletildi)
+        if hasattr(self, "_view_all_btn"):
+            self._view_all_btn.hide()
+
+    # ─────────────────────────────────────────────────────────────
+    #  İLGİLİ VİDEOLAR — Up Next paneli
+    # ─────────────────────────────────────────────────────────────
+    def _fetch_related_videos(self, title: str):
+        """Mevcut video başlığına göre ilişkili videoları getirir."""
+        if not hasattr(self, "_up_next_layout"):
+            return
+        # Placeholder göster
+        while self._up_next_layout.count() > 1:
+            item = self._up_next_layout.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+        ph = QLabel("İlgili videolar yükleniyor…")
+        ph.setObjectName("relatedPlaceholder")
+        ph.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        ph.setStyleSheet(f"color: {_TEXT_TERTIARY}; font-size: 12px; padding: 20px 0; background: transparent;")
+        self._up_next_layout.insertWidget(0, ph)
+
+        worker = _SearchWorker(title, max_results=12)
+        worker.results_ready.connect(lambda items, p=ph: self._on_related_ready(items, p))
+        worker.search_error.connect(lambda e: logger.warning(f"İlişkili video hatası: {e}"))
+        worker.start()
+        self._related_worker = worker
+
+    def _on_related_ready(self, items: list, placeholder=None):
+        """İlişkili videolar hazır — up-next panelini güncelle."""
+        if not hasattr(self, "_up_next_layout"):
+            return
+        # Placeholder'ı kaldır
+        while self._up_next_layout.count() > 1:
+            item = self._up_next_layout.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+        for i, it in enumerate(items):
+            card = self._build_up_next_card(it, i)
+            self._up_next_layout.insertWidget(self._up_next_layout.count() - 1, card)
+
+    # ─────────────────────────────────────────────────────────────
+    #  PLAYLİST DETAY SAYFASI (index 4)
+    # ─────────────────────────────────────────────────────────────
+    def _build_playlist_detail_page(self) -> QScrollArea:
+        """Playlist detay sayfası (index 4)."""
+        page = QScrollArea()
+        page.setWidgetResizable(True)
+        page.setStyleSheet(f"""
+            QScrollArea {{ border: none; background: transparent; }}
+            QScrollBar:vertical {{ background: transparent; width: 8px; }}
+            QScrollBar::handle:vertical {{ background: {_SURFACE3}; border-radius: 4px; }}
+            QScrollBar::handle:vertical:hover {{ background: {_ACCENT}; }}
+            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height: 0; }}
+        """)
+
+        content = QWidget()
+        content.setStyleSheet("background: transparent;")
+        layout = QVBoxLayout(content)
+        layout.setContentsMargins(28, 24, 28, 32)
+        layout.setSpacing(16)
+
+        # ── Header ──
+        hdr = QHBoxLayout()
+        hdr.setSpacing(12)
+
+        back_btn = QPushButton("← Geri")
+        back_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        back_btn.setFixedHeight(36)
+        back_btn.setStyleSheet(f"""
+            QPushButton {{
+                background: {_SURFACE2};
+                color: {_TEXT_PRIMARY};
+                border: 1px solid {_GLASS_BORDER};
+                border-radius: 8px;
+                padding: 0 16px;
+                font-size: 13px;
+            }}
+            QPushButton:hover {{ background: {_SURFACE3}; }}
+        """)
+        back_btn.clicked.connect(lambda: self._nav_to_page(2, 2))
+        hdr.addWidget(back_btn)
+
+        self._pl_detail_title_lbl = QLabel("Playlist")
+        self._pl_detail_title_lbl.setStyleSheet(f"""
+            QLabel {{
+                color: {_TEXT_PRIMARY};
+                font-size: 20px;
+                font-weight: 700;
+                background: transparent;
+            }}
+        """)
+        hdr.addWidget(self._pl_detail_title_lbl, 1)
+
+        play_all_btn = QPushButton("▶  Tamamını Oynat")
+        play_all_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        play_all_btn.setFixedHeight(36)
+        play_all_btn.setStyleSheet(f"""
+            QPushButton {{
+                background: {_ACCENT};
+                color: #003907;
+                border: none;
+                border-radius: 8px;
+                padding: 0 20px;
+                font-size: 13px;
+                font-weight: 700;
+            }}
+            QPushButton:hover {{ background: {_ACCENT_LIGHT}; }}
+        """)
+        play_all_btn.clicked.connect(lambda: self._play_playlist(self._pl_detail_name))
+        hdr.addWidget(play_all_btn)
+
+        layout.addLayout(hdr)
+
+        # ── Müzik Ekle butonu ──
+        add_btn = QPushButton("＋  Müzik Ekle")
+        add_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        add_btn.setFixedHeight(36)
+        add_btn.setStyleSheet(f"""
+            QPushButton {{
+                background: transparent;
+                color: {_ACCENT};
+                border: 1px solid rgba(0,255,65,0.4);
+                border-radius: 8px;
+                padding: 0 20px;
+                font-size: 13px;
+                font-weight: 600;
+                text-align: left;
+            }}
+            QPushButton:hover {{
+                background: rgba(0,255,65,0.08);
+                border-color: {_ACCENT};
+            }}
+        """)
+        add_btn.clicked.connect(self._add_tracks_to_playlist_dialog)
+        layout.addWidget(add_btn)
+
+        # ── Track listesi ──
+        track_container = QFrame()
+        track_container.setStyleSheet(f"""
+            QFrame {{
+                background: {_SURFACE2};
+                border: 1px solid rgba(255,255,255,0.06);
+                border-radius: 12px;
+            }}
+        """)
+        self._pl_detail_track_layout = QVBoxLayout(track_container)
+        self._pl_detail_track_layout.setContentsMargins(0, 4, 0, 4)
+        self._pl_detail_track_layout.setSpacing(0)
+
+        empty_lbl = QLabel("Bu playlist henüz boş. ＋ Müzik Ekle ile ekleyin!")
+        empty_lbl.setObjectName("plEmptyLbl")
+        empty_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        empty_lbl.setStyleSheet(f"color: {_TEXT_TERTIARY}; font-size: 13px; padding: 30px; background: transparent;")
+        self._pl_detail_track_layout.addWidget(empty_lbl)
+
+        layout.addWidget(track_container)
+        layout.addStretch()
+
+        page.setWidget(content)
+        return page
+
+    def _open_playlist_detail(self, name: str):
+        """Playlist detay sayfasını aç."""
+        self._pl_detail_name = name
+        self._pl_detail_title_lbl.setText(f"📁  {name}")
+        self._populate_playlist_detail(name)
+        self._nav_to_page(4)  # Playlist detay sayfasına geç (btn_idx=-1 → none active)
+
+    def _populate_playlist_detail(self, name: str):
+        """Playlist detay track listesini doldur."""
+        import json as _json
+        # Mevcut track'leri temizle
+        while self._pl_detail_track_layout.count() > 0:
+            child = self._pl_detail_track_layout.takeAt(0)
+            if child.widget():
+                child.widget().deleteLater()
+
+        playlists_path = os.path.join(config.BASE_DIR, "music", "playlists.json")
+        tracks: list = []
+        try:
+            with open(playlists_path, "r", encoding="utf-8") as f:
+                data = _json.load(f)
+            if isinstance(data, dict) and name in data:
+                raw = data[name]
+                tracks = raw if isinstance(raw, list) else []
+        except Exception:
+            pass
+
+        if not tracks:
+            empty_lbl = QLabel("Bu playlist henüz boş. ＋ Müzik Ekle ile ekleyin!")
+            empty_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            empty_lbl.setStyleSheet(
+                f"color: {_TEXT_TERTIARY}; font-size: 13px; padding: 30px; background: transparent;"
+            )
+            self._pl_detail_track_layout.addWidget(empty_lbl)
+            return
+
+        for i, track in enumerate(tracks):
+            fname = track if isinstance(track, str) else track.get("filename", "")
+            if fname:
+                row = self._build_pl_detail_track_row(i + 1, fname, name)
+                self._pl_detail_track_layout.addWidget(row)
+
+    def _build_pl_detail_track_row(self, num: int, filename: str, playlist_name: str) -> QFrame:
+        """Playlist detay sayfasındaki tek track satırı."""
+        row = QFrame()
+        row.setStyleSheet(f"""
+            QFrame {{
+                background: transparent;
+                border: none;
+                border-bottom: 1px solid rgba(255,255,255,0.04);
+            }}
+            QFrame:hover {{ background: rgba(255,255,255,0.04); }}
+        """)
+        hl = QHBoxLayout(row)
+        hl.setContentsMargins(16, 8, 12, 8)
+        hl.setSpacing(12)
+
+        num_lbl = QLabel(str(num))
+        num_lbl.setFixedWidth(24)
+        num_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        num_lbl.setStyleSheet(f"color: {_TEXT_TERTIARY}; font-size: 12px; background: transparent;")
+        hl.addWidget(num_lbl)
+
+        display_name = filename.rsplit(".", 1)[0] if "." in filename else filename
+        name_lbl = QLabel(display_name)
+        name_lbl.setStyleSheet(f"color: {_TEXT_PRIMARY}; font-size: 13px; background: transparent;")
+        hl.addWidget(name_lbl, 1)
+
+        play_btn = QPushButton("▶")
+        play_btn.setFixedSize(28, 28)
+        play_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        play_btn.setStyleSheet(f"""
+            QPushButton {{
+                background: {_ACCENT};
+                color: #003907;
+                border: none;
+                border-radius: 14px;
+                font-size: 11px;
+                font-weight: bold;
+            }}
+            QPushButton:hover {{ background: {_ACCENT_LIGHT}; }}
+        """)
+        play_btn.clicked.connect(lambda: self._play_lib_track(filename))
+        hl.addWidget(play_btn)
+
+        remove_btn = QPushButton("✕")
+        remove_btn.setFixedSize(28, 28)
+        remove_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        remove_btn.setToolTip("Playlist'ten kaldır")
+        remove_btn.setStyleSheet(f"""
+            QPushButton {{
+                background: transparent;
+                color: {_TEXT_TERTIARY};
+                border: 1px solid rgba(255,255,255,0.12);
+                border-radius: 14px;
+                font-size: 11px;
+            }}
+            QPushButton:hover {{
+                background: rgba(255,60,60,0.15);
+                color: #ff6060;
+                border-color: #ff6060;
+            }}
+        """)
+        remove_btn.clicked.connect(lambda: self._remove_track_from_playlist(playlist_name, filename))
+        hl.addWidget(remove_btn)
+
+        return row
+
+    def _remove_track_from_playlist(self, playlist_name: str, filename: str):
+        """Track'i playlist'ten kaldır."""
+        import json as _json
+        playlists_path = os.path.join(config.BASE_DIR, "music", "playlists.json")
+        try:
+            with open(playlists_path, "r", encoding="utf-8") as f:
+                data = _json.load(f)
+            if isinstance(data, dict) and playlist_name in data:
+                tracks = data[playlist_name]
+                if isinstance(tracks, list):
+                    data[playlist_name] = [t for t in tracks if t != filename]
+            with open(playlists_path, "w", encoding="utf-8") as f:
+                _json.dump(data, f, ensure_ascii=False, indent=2)
+        except Exception as e:
+            logger.warning(f"Track kaldırılamadı: {e}")
+        self._populate_playlist_detail(playlist_name)
+
+    def _add_tracks_to_playlist_dialog(self):
+        """Kütüphaneden playlist'e müzik ekle — dialog."""
+        import json as _json
+        from PyQt6.QtWidgets import QDialog, QDialogButtonBox
+
+        if not self._pl_detail_name:
+            return
+
+        # Mevcut kütüphane dosyalarını topla
+        music_dir = config.MUSIC_DIR
+        all_files: list[str] = []
+        if os.path.isdir(music_dir):
+            for f in sorted(os.listdir(music_dir)):
+                if f.lower().endswith((".mp3", ".flac", ".wav", ".aac", ".ogg", ".m4a", ".opus", ".webm", ".mp4")):
+                    all_files.append(f)
+
+        if not all_files:
+            from PyQt6.QtWidgets import QMessageBox
+            QMessageBox.information(self, "Kütüphane Boş", "Müzik kütüphanenizde dosya bulunamadı.")
+            return
+
+        # Mevcut playlist içeriğini oku
+        playlists_path = os.path.join(config.BASE_DIR, "music", "playlists.json")
+        existing: list[str] = []
+        try:
+            with open(playlists_path, "r", encoding="utf-8") as f:
+                data = _json.load(f)
+            existing = data.get(self._pl_detail_name, [])
+            if not isinstance(existing, list):
+                existing = []
+        except Exception:
+            pass
+
+        # Dialog oluştur
+        dlg = QDialog(self)
+        dlg.setWindowTitle(f"{self._pl_detail_name} — Müzik Ekle")
+        dlg.resize(440, 520)
+        dlg.setStyleSheet(f"""
+            QDialog {{ background: {_BG}; color: {_TEXT_PRIMARY}; }}
+            QScrollArea {{ border: none; background: transparent; }}
+            QCheckBox {{ color: {_TEXT_PRIMARY}; font-size: 13px; padding: 4px 0; }}
+            QCheckBox::indicator {{ width: 16px; height: 16px; border-radius: 4px; border: 1px solid {_GLASS_BORDER}; background: {_SURFACE2}; }}
+            QCheckBox::indicator:checked {{ background: {_ACCENT}; border-color: {_ACCENT}; }}
+        """)
+
+        dlg_layout = QVBoxLayout(dlg)
+        dlg_layout.setSpacing(12)
+        dlg_layout.setContentsMargins(16, 16, 16, 12)
+
+        title_lbl = QLabel(f"Eklenecek şarkıları seçin:")
+        title_lbl.setStyleSheet(f"color: {_TEXT_SECONDARY}; font-size: 12px;")
+        dlg_layout.addWidget(title_lbl)
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        dlg_widget = QWidget()
+        dlg_widget.setStyleSheet("background: transparent;")
+        dlg_v = QVBoxLayout(dlg_widget)
+        dlg_v.setSpacing(2)
+        dlg_v.setContentsMargins(4, 4, 4, 4)
+
+        from PyQt6.QtWidgets import QCheckBox
+        checkboxes: list[QCheckBox] = []
+        for fname in all_files:
+            cb = QCheckBox(fname.rsplit(".", 1)[0])
+            cb.setProperty("filename", fname)
+            cb.setChecked(fname in existing)
+            dlg_v.addWidget(cb)
+            checkboxes.append(cb)
+        dlg_v.addStretch()
+
+        scroll.setWidget(dlg_widget)
+        dlg_layout.addWidget(scroll, 1)
+
+        btns = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+        )
+        btns.button(QDialogButtonBox.StandardButton.Ok).setText("Kaydet")
+        btns.button(QDialogButtonBox.StandardButton.Cancel).setText("İptal")
+        btns.button(QDialogButtonBox.StandardButton.Ok).setStyleSheet(
+            f"QPushButton {{ background: {_ACCENT}; color: #003907; border: none; border-radius: 6px; padding: 6px 18px; font-weight: 700; }}"
+        )
+        btns.accepted.connect(dlg.accept)
+        btns.rejected.connect(dlg.reject)
+        dlg_layout.addWidget(btns)
+
+        if dlg.exec() == QDialog.DialogCode.Accepted:
+            selected = [cb.property("filename") for cb in checkboxes if cb.isChecked()]
+            self._save_playlist_tracks(self._pl_detail_name, selected)
+            self._populate_playlist_detail(self._pl_detail_name)
+
+    def _save_playlist_tracks(self, playlist_name: str, tracks: list[str]):
+        """Playlist track listesini JSON'a kaydet."""
+        import json as _json
+        playlists_path = os.path.join(config.BASE_DIR, "music", "playlists.json")
+        try:
+            try:
+                with open(playlists_path, "r", encoding="utf-8") as f:
+                    data = _json.load(f)
+            except Exception:
+                data = {}
+            if not isinstance(data, dict):
+                data = {}
+            data[playlist_name] = tracks
+            with open(playlists_path, "w", encoding="utf-8") as f:
+                _json.dump(data, f, ensure_ascii=False, indent=2)
+        except Exception as e:
+            logger.warning(f"Playlist kaydedilemedi: {e}")
