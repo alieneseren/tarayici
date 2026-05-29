@@ -1436,9 +1436,15 @@ class MusicFullPage(QWidget):
         self._hero_play_btn.setEnabled(True)
         self._hero_watch_btn.setEnabled(True)
         hero_url = top["url"]
-        self._hero_play_btn.clicked.disconnect()
+        try:
+            self._hero_play_btn.clicked.disconnect()
+        except TypeError:
+            pass
         self._hero_play_btn.clicked.connect(lambda: self._play_stream(hero_url))
-        self._hero_watch_btn.clicked.disconnect()
+        try:
+            self._hero_watch_btn.clicked.disconnect()
+        except TypeError:
+            pass
         self._hero_watch_btn.clicked.connect(lambda: self._watch_video_url(hero_url))
         # Thumbnail yükle
         if top.get("thumbnail"):
