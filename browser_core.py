@@ -1364,28 +1364,41 @@ class VisionaryBrowser(QMainWindow):
         layout.addWidget(next_btn)
 
     def _on_prev_track(self) -> None:
-        """Önceki şarkıya geç."""
-        welcome = getattr(self, '_welcome', None)
-        if welcome:
-            welcome.play_prev_track()
-            self._play_btn.setText("⏸")
+        """Önceki şarkıya geç — MusicFullPage öncelikli."""
+        music_page = getattr(self, '_music_fullpage', None)
+        if music_page:
+            music_page._on_prev()
+        else:
+            welcome = getattr(self, '_welcome', None)
+            if welcome:
+                welcome.play_prev_track()
+        self._play_btn.setText("⏸")
+        if hasattr(self, '_mini_play_btn'):
             self._mini_play_btn.setText("⏸")
 
     def _on_next_track(self) -> None:
-        """Sonraki şarkıya geç."""
-        welcome = getattr(self, '_welcome', None)
-        if welcome:
-            welcome.play_next_track()
-            self._play_btn.setText("⏸")
+        """Sonraki şarkıya geç — MusicFullPage öncelikli."""
+        music_page = getattr(self, '_music_fullpage', None)
+        if music_page:
+            music_page._on_next()
+        else:
+            welcome = getattr(self, '_welcome', None)
+            if welcome:
+                welcome.play_next_track()
+        self._play_btn.setText("⏸")
+        if hasattr(self, '_mini_play_btn'):
             self._mini_play_btn.setText("⏸")
 
     def _on_track_changed(self, title: str, url: str, index: int) -> None:
-        """Şarkı değiştiğinde UI güncellemesi."""
+        """Şarkı değiştiğinde UI güncellemesi + mini player göster."""
         display = title[:20] + "…" if len(title) > 20 else title
         self._mini_track_label.setText(f"♪ {display}")
         self._play_btn.setText("⏸")
         if hasattr(self, '_mini_play_btn'):
             self._mini_play_btn.setText("⏸")
+        # Mini player'ı göster (müzik paneli kapalıysa)
+        if not getattr(self, '_music_panel', None) or not self._music_panel.isVisible():
+            self._mini_player.show()
         if hasattr(self, '_now_playing_lbl'):
             panel_display = title[:28] + "…" if len(title) > 28 else title
             self._now_playing_lbl.setText(panel_display)
@@ -1823,24 +1836,30 @@ class VisionaryBrowser(QMainWindow):
             self._music_panel.show()
 
     def _toggle_music_playback(self) -> None:
-        """Aktif müzik ve videoyu eşzamanlı durdur/başlat."""
-        welcome = getattr(self, '_welcome', None)
-        if welcome:
-            playing = welcome.toggle_music()
+        """Aktif müzigi durdur/başlat — MusicFullPage öncelikli."""
+        music_page = getattr(self, '_music_fullpage', None)
+        if music_page:
+            music_page._toggle_play()
+            state = music_page._video_player.playbackState()
+            from PyQt6.QtMultimedia import QMediaPlayer
+            playing = state == QMediaPlayer.PlaybackState.PlayingState
             icon = "⏸" if playing else "▶"
-            self._play_btn.setText(icon)
-            if hasattr(self, '_mini_play_btn'):
-                self._mini_play_btn.setText(icon)
-            # Video frame'i de senkronize et
-            if hasattr(self, '_yt_video_frame') and self._yt_video_frame.isVisible():
-                if playing:
-                    self._yt_video_frame.resume_video()
-                else:
-                    self._yt_video_frame.pause_video()
         else:
-            self._play_btn.setText("▶")
-            if hasattr(self, '_mini_play_btn'):
-                self._mini_play_btn.setText("▶")
+            welcome = getattr(self, '_welcome', None)
+            if welcome:
+                playing = welcome.toggle_music()
+                icon = "⏸" if playing else "▶"
+                # Video frame'i de senkronize et
+                if hasattr(self, '_yt_video_frame') and self._yt_video_frame.isVisible():
+                    if playing:
+                        self._yt_video_frame.resume_video()
+                    else:
+                        self._yt_video_frame.pause_video()
+            else:
+                icon = "▶"
+        self._play_btn.setText(icon)
+        if hasattr(self, '_mini_play_btn'):
+            self._mini_play_btn.setText(icon)
 
     def _seek_forward(self) -> None:
         """Müziği 10 saniye ileri sar."""

@@ -653,6 +653,12 @@ class MusicFullPage(QWidget):
         self._kutuphane_page = self._build_kutuphane_page()    # 2
         self._pages.addWidget(self._kutuphane_page)
 
+        # Video izleme sayfası — ayrı tam sayfa (index 3)
+        self._video_page = self._build_video_page()              # 3
+        self._pages.addWidget(self._video_page)
+        # Geriye dönük uyumluluk: _video_container alias'ı
+        self._video_container = self._video_page
+
         right_layout.addWidget(self._pages, 1)
 
         # Now playing bar (her sayfada görünür)
@@ -819,6 +825,11 @@ class MusicFullPage(QWidget):
     def _nav_to_page(self, page_idx: int, btn_idx: int = -1):
         """Sayfaya geç + sidebar buton durumunu güncelle."""
         self._pages.setCurrentIndex(page_idx)
+        # Video sayfası (3) için hiçbir nav butonu aktif olmaz
+        if page_idx >= 3:
+            for btn in self._nav_btns:
+                self._set_nav_btn_active(btn, False)
+            return
         # btn_idx belirtilmediyse sayfa_idx = buton_idx (0→0, 1→1, 2→2)
         effective = btn_idx if btn_idx >= 0 else page_idx
         for i, btn in enumerate(self._nav_btns):
@@ -1166,31 +1177,17 @@ class MusicFullPage(QWidget):
     # ───────────────────────────────────────────────────────────────
 
     def _build_kesfet_page(self) -> QWidget:
-        """Keşfet sayfası (index 1) — arama çubuğu + video + sonuçlar."""
+        """Keşfet sayfası (index 1) — arama çubuğu + sonuçlar (video artık ayrı sayfa)."""
         page = QWidget()
         page.setStyleSheet("background: transparent;")
         page_layout = QVBoxLayout(page)
         page_layout.setContentsMargins(0, 0, 0, 0)
         page_layout.setSpacing(0)
 
-        # Arama başlığı (_search_input, _search_btn, _url_input, vb. burada oluşur)
+        # Arama başlığı
         page_layout.addWidget(self._build_search_header())
 
-        # Video + Sonuçlar dikey splitter
-        self._content_splitter = QSplitter(Qt.Orientation.Vertical)
-        self._content_splitter.setStyleSheet(f"""
-            QSplitter::handle {{
-                background: {_GLASS_BORDER};
-                height: 2px;
-            }}
-        """)
-
-        # Video container (başlangıçta gizli)
-        self._video_container = self._build_video_page()
-        self._video_container.hide()
-        self._content_splitter.addWidget(self._video_container)
-
-        # Sonuçlar scroll
+        # Sonuçlar scroll (direkt, splitter yok)
         self._results_scroll = QScrollArea()
         self._results_scroll.setWidgetResizable(True)
         self._results_scroll.setStyleSheet(f"""
@@ -1219,11 +1216,10 @@ class MusicFullPage(QWidget):
         ro_layout.addWidget(self._section_header)
         ro_layout.addWidget(self._results_scroll, 1)
 
-        self._content_splitter.addWidget(results_outer)
-        self._content_splitter.setStretchFactor(0, 2)
-        self._content_splitter.setStretchFactor(1, 1)
+        # content_splitter alias (eski referanslar için)
+        self._content_splitter = results_outer
 
-        page_layout.addWidget(self._content_splitter, 1)
+        page_layout.addWidget(results_outer, 1)
         return page
 
     # ───────────────────────────────────────────────────────────────
@@ -2714,8 +2710,8 @@ class MusicFullPage(QWidget):
         return btn
         
     def _minimize_video(self):
-        """Video alanını küçült (gizle) ama ses çalmaya devam et."""
-        self._video_container.hide()
+        """Video görünümünü küçült — ses çalmaya devam eder, Keşfet'e döner."""
+        self._nav_to_page(1, 1)
         
     # ─────────────────────────────────────────────────────────────
     #  GLOW PULSE (Arka plan pulse efekti)
@@ -3225,13 +3221,15 @@ class MusicFullPage(QWidget):
         
     def _watch_video_url(self, url: str):
         """YouTube video URL'den video izle."""
-        self._nav_to_page(1, 1)  # Keşfet sayfasına geç (video orada)
+        # Önce mevcut medyayı durdur
+        self._video_player.stop()
         if self._stream_worker:
             self._stream_worker.quit()
             self._stream_worker.wait()
         self._pending_video_url = url
         self._current_url = url
-        self._video_container.show()
+        # Video sayfasına (index 3) geç
+        self._nav_to_page(3)
         self._video_title_label.setText("Video hazirlaniyor...")
         self._video_browser_btn.setEnabled(True)
         self._set_video_panel_state(
@@ -3266,10 +3264,7 @@ class MusicFullPage(QWidget):
             f"{fmt} hazır. İsterseniz videoyu tarayıcıda orijinal sayfasında da açabilirsiniz.",
             "live",
         )
-        
-        # Video container'ı göster (QSplitter üzerinde)
-        self._video_container.show()
-        
+        self._nav_to_page(3)  # Video sayfasına geç
         self._video_player.play()
         self._update_now_playing()
         self._start_glow_pulse()
@@ -3278,8 +3273,8 @@ class MusicFullPage(QWidget):
     def _on_video_stream_error(self, error: str):
         """Video stream hatası."""
         logger.error(f"Video stream hatası: {error}")
-        self._video_container.show()
-        self._video_title_label.setText("Video acilamadi")
+        self._nav_to_page(3)  # Video sayfasında hata mesajını göster
+        self._video_title_label.setText("Video açılamadı")
         self._set_video_panel_state(
             "HATA",
             f"Akis acilamadi: {error[:140]}",
@@ -3351,19 +3346,16 @@ class MusicFullPage(QWidget):
             self._video_stage.layout().addWidget(self._video_widget)
             
     def _close_video(self):
-        """Video'yu kapat (container'ı gizle)."""
+        """Video'yu kapat — Keşfet sayfasına dön."""
         self._video_player.stop()
-        self._video_container.hide()
         self._is_video_mode = False
         self._pending_video_url = ""
         self._current_url = ""
         self._video_browser_btn.setEnabled(False)
-        self._video_title_label.setText("Video salonu hazır")
-        self._set_video_panel_state(
-            "BEKLEMEDE",
-            "Bir video acildiginda oynatma kontrolleri ve kalite bilgisi burada guncellenir.",
-            "idle",
-        )
+        self._video_title_label.setText("Video hazır bekleniyor")
+        self._set_video_panel_state("BEKLEMEDE", "Bir video seçildiğinde oynatma başlar.", "idle")
+        # Keşfet sayfasına dön
+        self._nav_to_page(1, 1)
         
     def _open_video_in_browser(self):
         """Video'yu tarayıcıda aç."""
@@ -3476,16 +3468,15 @@ class MusicFullPage(QWidget):
         import os
         if not os.path.isfile(filepath):
             return
-        self._nav_to_page(1, 1)
-        self._video_container.show()
+        self._video_player.stop()
         name = os.path.basename(filepath)
         self._video_title_label.setText(name)
         self._set_video_panel_state("OYNATILIYOR", f"Yerel dosya: {name}", "live")
-        self._video_player.stop()
         self._video_player.setSource(QUrl.fromLocalFile(filepath))
         self._current_title = name
         self._current_url = filepath
         self._is_video_mode = True
+        self._nav_to_page(3)  # Video sayfasına geç
         self._video_player.play()
         self._update_now_playing()
         self._start_glow_pulse()
